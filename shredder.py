@@ -1,12 +1,13 @@
 import argparse
 from PIL import Image, ImageOps
 import numpy as np
+from numpy.core.fromnumeric import trace
 from scipy import ndimage
 
 
 class Shredder:
     """Implementation of "Handwritten Text Line Segmentation by Shredding Text
-    into its Lines" by Anguelos Nicolaou and Basilis Gatos
+    into its Lines" by Anguelos Nicolaou and Basilis Gatos (2009; doi:10/b5wsx6)
     """
 
     def __init__(self, image_path: str) -> None:
@@ -16,7 +17,15 @@ class Shredder:
         # Label the connected components
         self.components, self.n_components = ndimage.label(self.image)
 
-    def prepare_image(self, image_path: str):
+        # Find the letter height and define the blurring window
+        self.letter_height = self.find_letter_height()
+        self.blur_width = (self.letter_height * 8.0).astype(int)
+        self.blur_height = (self.letter_height * 0.8).astype(int)
+
+        # Blur the image
+        self.blurred_image = self.blur_image()
+
+    def prepare_image(self, image_path: str) -> np.ndarray:
         # Prepare the image
         image = Image.open(image_path)
         # make sure we're in grayscale
@@ -44,16 +53,65 @@ class Shredder:
 
         return np.mean(heights)
 
-    def blur_image(self):
-        lh = self.find_letter_height()
-        # define size of the blur window
-        bw = np.round(lh * 8).astype(int)
-        bh = np.round(lh * 0.8).astype(int)
+    def blur_image(self) -> np.ndarray:
+        """Blurs the image with the given blur window.
 
-        # this is slightly different from the paper but performs way better
-        blurred_image = ndimage.uniform_filter(self.image.astype(np.float64), size=(bh, bw))
+        Returns:
+            np.ndarray: The blurred image
+        """
+        blurred_image = ndimage.uniform_filter(
+            self.image.astype(np.float64), 
+            size=(self.blur_height, self.blur_width)
+        )
+        
+        output = Image.fromarray((blurred_image * 255).astype(np.uint8))
+        output.save("binarized_blurred_image.png")
 
         return blurred_image
+
+    def generate_tracers(self):
+        # k cannot be higher than the max y, x corresponds to image x
+        max_y, max_x = self.blurred_image.shape
+
+        tracers = np.empty((max_x, max_y))
+
+        # Precompute tracers
+        for k in range(max_y):
+            for x in range(max_x):
+                if x == 0:
+                    tracers[x, k] = k
+                else:
+                    prev = tracers[x - 1, k]
+                    offset = self.blur_height // 2
+
+                    # calculate lhs y and bound it in (0, max_y)
+                    lhs_y = np.min([prev + offset, max_y - 1]).astype(int)
+                    lhs = self.blurred_image[lhs_y, x]
+
+                    # calculate rhs y and bound it in (0, max_y)
+                    rhs_y = np.max([prev - offset, 0]).astype(int)
+                    rhs = self.blurred_image[rhs_y, x]
+
+                    if lhs > rhs:
+                        tracers[x, k] = prev - 1
+                    elif lhs == rhs:
+                        tracers[x, k] = prev
+                    else:
+                        tracers[x, k] = prev + 1
+
+        # Save tracers to an image
+        tracer_image = np.empty_like(self.image)
+
+        for x in range(max_x):
+            for y in range(max_y):
+                if (tracers[x] == y).any():
+                    tracer_image[y, x] = 0
+                else:
+                    tracer_image[y, x] = 1
+
+        # Save tracer image for testing
+        image = Image.fromarray((tracer_image * 255).astype(np.uint8))
+        image.save("tracers.png")
 
 
 if __name__ == "__main__":
@@ -65,6 +123,7 @@ if __name__ == "__main__":
 
     if args.image_path:
         shredder = Shredder(args.image_path)
-        lh = shredder.find_letter_height()
-        print(lh)
-        shredder.blur_image()
+        shredder.generate_tracers()
+    else:
+        print("Please provide an input image.")
+        exit()
