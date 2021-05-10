@@ -164,6 +164,11 @@ class Shredder:
 
 
 if __name__ == "__main__":
+
+    #TODO###################################################################################
+    #TODO: Undo rotation when processing output! (also check if it even makes a difference)#
+    #TODO###################################################################################
+
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
