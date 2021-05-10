@@ -126,4 +126,5 @@ if __name__ == "__main__":
         shredder.generate_tracers()
     else:
         print("Please provide an input image.")
+        parser.print_help()
         exit()
