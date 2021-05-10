@@ -73,23 +73,25 @@ class Shredder:
         # k cannot be higher than the max y, x corresponds to image x
         max_y, max_x = self.blurred_image.shape
 
-        tracers = np.empty((max_x, max_y))
+        offset = self.blur_height // 2
 
         # Precompute tracers
+        tracers = np.empty((max_x, max_y))
+        
+        # initialize all x == 0 to y
+        tracers[0] = np.arange(max_y)
+
         for k in range(max_y):
             for x in range(max_x):
-                if x == 0:
-                    tracers[x, k] = k
-                else:
+                if x > 0:
                     prev = tracers[x - 1, k]
-                    offset = self.blur_height // 2
 
-                    # calculate lhs y and bound it in (0, max_y)
-                    lhs_y = np.min([prev + offset, max_y - 1]).astype(int)
+                    # calculate lhs y and bound it in [0, max_y)
+                    lhs_y = np.clip(prev + offset, 0, max_y - 1).astype(int)
                     lhs = self.blurred_image[lhs_y, x]
 
-                    # calculate rhs y and bound it in (0, max_y)
-                    rhs_y = np.max([prev - offset, 0]).astype(int)
+                    # calculate rhs y and bound it in [0, max_y)
+                    rhs_y = np.clip(prev - offset, 0, max_y - 1).astype(int)
                     rhs = self.blurred_image[rhs_y, x]
 
                     if lhs > rhs:
@@ -99,19 +101,23 @@ class Shredder:
                     else:
                         tracers[x, k] = prev + 1
 
-        # Save tracers to an image
-        tracer_image = np.empty_like(self.image)
-
-        for x in range(max_x):
-            for y in range(max_y):
-                if (tracers[x] == y).any():
-                    tracer_image[y, x] = 0
-                else:
-                    tracer_image[y, x] = 1
-
         # Save tracer image for testing
-        image = Image.fromarray((tracer_image * 255).astype(np.uint8))
-        image.save("tracers.png")
+        image = Image.fromarray((tracers).astype(np.uint8))
+        image.save("tracer_helper.png")
+
+        # # Save tracers to an image
+        # tracer_image = np.empty_like(self.image)
+
+        # for x in range(max_x):
+        #     for y in range(max_y):
+        #         if (tracers[x] == y).any():
+        #             tracer_image[y, x] = 0
+        #         else:
+        #             tracer_image[y, x] = 1
+
+        # # Save tracer image for testing
+        # image = Image.fromarray((tracer_image * 255).astype(np.uint8))
+        # image.save("tracers.png")
 
 
 if __name__ == "__main__":
