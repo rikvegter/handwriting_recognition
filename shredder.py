@@ -1,8 +1,9 @@
 import argparse
 from PIL import Image, ImageOps
 import numpy as np
-from numpy.core.fromnumeric import trace
+from numpy.core.fromnumeric import ndim, trace
 from scipy import ndimage
+import matplotlib.pyplot as plt
 
 
 class Shredder:
@@ -13,9 +14,11 @@ class Shredder:
     def __init__(self, image_path: str, save_debug_imgs: bool) -> None:
         # Set debug settings
         self.save_debug_imgs = save_debug_imgs
-        
+
         # Open the image, convert it to a numpy array and make sure it is binary
         self.image = self.prepare_image(image_path)
+
+        ## 2.1 Preprocessing
 
         # Label the connected components
         self.components, self.n_components = ndimage.label(self.image)
@@ -27,6 +30,12 @@ class Shredder:
 
         # Blur the image
         self.blurred_image = self.blur_image()
+
+        ## 2.2.1 Generate white path tracers
+        self.white_path_traces = self.generate_tracers()
+
+        ## 2.2.2 Label line areas
+        self.labeled_line_areas = self.get_lla()
 
     def prepare_image(self, image_path: str) -> np.ndarray:
         # Prepare the image
@@ -44,7 +53,9 @@ class Shredder:
                 (np_image_binarized * 255).astype(np.uint8))
             output.save("binarized_image.png")
 
-        return ndimage.rotate(np_image_binarized, 180)
+        rotated = ndimage.rotate(np_image_binarized, 180)
+
+        return rotated # np_image_binarized
 
     def find_letter_height(self) -> float:
         """Finds the average letter height based on the average height of the
@@ -69,19 +80,9 @@ class Shredder:
             np.ndarray: The blurred image
         """
 
-        # First dilate horizontally and erode vertically
-        # ! different from the paper!
-
-        # erosion_struct = np.zeros((3,3))
-        # erosion_struct[:, 1] = True
-        # eroded_image = ndimage.binary_erosion(self.image, structure=erosion_struct, iterations=10)
-
-        # dilation_struct = np.zeros((3,3))
-        # dilation_struct[1] = True
-        # dilated_image = ndimage.binary_dilation(eroded_image, structure=dilation_struct, iterations=40)
-
         if self.save_debug_imgs:
-            output = Image.fromarray((self.image.astype(np.uint8) * 255).astype(np.uint8))
+            output = Image.fromarray(
+                (self.image.astype(np.uint8) * 255).astype(np.uint8))
             output.save("binarized_dilated.png")
 
         # Use a uniform filter as a fast blur operator
@@ -92,13 +93,14 @@ class Shredder:
 
         if self.save_debug_imgs:
             # increase range so blurred image is visible
-            output = np.interp(blurred_image, (blurred_image.min(), blurred_image.max()), (0, 255))
+            output = np.interp(
+                blurred_image, (blurred_image.min(), blurred_image.max()), (0, 255))
             output = Image.fromarray(blurred_image.astype(np.uint8))
             output.save("binarized_blurred_image.png")
 
         return blurred_image
 
-    def generate_tracers(self):
+    def generate_tracers(self) -> np.ndarray:
         """Generates the tracers between the text lines. This is a vectorized
         operation.
         """
@@ -162,6 +164,42 @@ class Shredder:
             )
             output_2.save("tracers.png")
 
+        # Return tracers
+        return tracer_image
+
+    def get_lla(self):
+        """Finds and labels lines.
+
+        Returns:
+            np.ndarray: An array the size of the original image, with components labeled using an integer.
+        """
+
+        # find connected components
+        line_areas, n_lines = ndimage.label(self.white_path_traces)
+
+        # set minimum pixel count
+        min_pix_count = self.letter_height**2
+
+        # find the pixel counts of every labeled image part
+        label_sizes = ndimage.labeled_comprehension(self.white_path_traces, line_areas, np.arange(1, n_lines + 1), np.size, np.uint16, 0, False)
+
+        # Mark labels to keep
+        labels_to_keep = np.argwhere(label_sizes >= min_pix_count).flatten() + 1 # labels should start at 1
+
+        # Set everything we do not want to keep to 0 and relabel so it is labels are monotonously increasing
+        output_labels = np.zeros_like(self.image)
+
+        for i, l in enumerate(labels_to_keep):
+            output_labels += np.where(line_areas == l, i + 1, 0)
+
+        if self.save_debug_imgs:
+            output_labels = np.ma.masked_where(output_labels == 0, output_labels)
+            cm = plt.get_cmap('turbo', lut=len(labels_to_keep) + 1).copy()
+            cm.set_bad(color='black')
+            colored_image = cm(output_labels)
+            Image.fromarray((colored_image[:, :, :3] * 255).astype(np.uint8)).save('line_labels.png')
+
+        return output_labels
 
 if __name__ == "__main__":
 
