@@ -64,10 +64,13 @@ def get_vertical_projection_profile(image):
 def create_cropped_images(line_segmentations, image):
     for lines in line_segmentations:
         #area = left, upper, right, lower
-        area = [0, lines[1], image.size[0] - 1, lines[0]]
-        import pdb; pdb.set_trace()
-        cropped_image = image.crop(area)
+        left = 1
+        top = lines[0]
+        right = image.size[0]
+        bottom = lines[1]
+        cropped_image = image.crop((left, top, right, bottom))
         cropped_image.show()
+        
         break
 
 
