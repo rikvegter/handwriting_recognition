@@ -68,12 +68,14 @@ def load_images_from_directory(data_dir: str) -> np.array:
     _, _, filenames = next(os.walk(data_dir))
     data = np.zeros((len(filenames), MAX_IMG_HEIGHT, MAX_IMG_WIDTH, 3))
 
+    skipped = 0
     for idx, file in enumerate(filenames):
         image: PIL.Image.Image = Image.open(data_dir + "/" + file)
 
         if image.width > MAX_IMG_WIDTH:
             print("Skipping image {} because its width of {} exceeds the maximum width of {}"
                   .format(data_dir + "/" + file, image.width, MAX_IMG_WIDTH))
+            skipped += 1
             continue
 
         # Non-binary images will have a tuple for the image colors instead of an integer value.
@@ -88,7 +90,12 @@ def load_images_from_directory(data_dir: str) -> np.array:
         # While the current image
         image_np = np.repeat(image_np[..., np.newaxis], 3, -1)
 
-        data[idx, 0:image_np.shape[0], 0:image_np.shape[1], 0:image_np.shape[2]] = image_np
+        real_idx = idx - skipped
+        data[real_idx, 0:image_np.shape[0], 0:image_np.shape[1], 0:image_np.shape[2]] = image_np
+
+    if skipped > 0:
+        data = data[0:-skipped, :, :, :]
+
     return data
 
 
@@ -314,3 +321,4 @@ def run_experiment(data_dir: str):
 
 if __name__ == "__main__":
     run_experiment("dataset")
+    # load_images_from_directory("/home/pim/Documents/workspace/handwriting_recognition/data")
