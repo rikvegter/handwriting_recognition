@@ -1,8 +1,11 @@
 import argparse
+import os
+from typing import Tuple
 from PIL import Image, ImageOps
 import numpy as np
 from numpy.core.fromnumeric import ndim, trace
 from scipy import ndimage
+from scipy.spatial.distance import cdist
 import matplotlib.pyplot as plt
 
 
@@ -10,34 +13,75 @@ class Shredder:
     """Implementation of "Handwritten Text Line Segmentation by Shredding Text
     into its Lines" by Anguelos Nicolaou and Basilis Gatos (2009; doi:10/b5wsx6)
     """
+    def __init__(self,
+                 image_path: str,
+                 debug: bool = False,
+                 output_path: str = "./") -> None:
+        """Initialize the line shredder
 
-    def __init__(self, image_path: str, save_debug_imgs: bool) -> None:
+        Args: image_path (str): the path of the image to segment lines of debug
+            (bool, optional): Whether to enable debug mode. Defaults to False.
+            output_path (str, optional): Where to save debug images to. Defaults
+            to "./".
+        """
         # Set debug settings
-        self.save_debug_imgs = save_debug_imgs
+        if debug: print("\x1b[1K\rSetting up...", end='')
+        self.debug = debug
+        self.output_path = output_path
+        self.im_counter = 0  # for labeling image order
+        if debug:
+            os.makedirs(self.output_path, exist_ok=True)
 
         # Open the image, convert it to a numpy array and make sure it is binary
-        self.image = self.prepare_image(image_path)
+        self.image = self.__prepare_image(image_path)
 
-        ## 2.1 Preprocessing
+        # 2.1 Preprocessing
 
         # Label the connected components
+        if self.debug:
+            print("\x1b[1K\rLabeling connected components...", end='')
         self.components, self.n_components = ndimage.label(self.image)
 
         # Find the letter height and define the blurring window
-        self.letter_height = self.find_letter_height()
+        if self.debug: print("\x1b[1K\rFinding letter height...", end='')
+        self.letter_height = self.__find_letter_height()
         self.blur_width = (self.letter_height * 4.0).astype(int)
         self.blur_height = (self.letter_height * 1.0).astype(int)
 
-        # Blur the image
-        self.blurred_image = self.blur_image()
+        # Blur the image (B(x, y))
+        if self.debug: print("\x1b[1K\rBlurring image...", end='')
+        self.blurred_image = self.__blur_image()
 
-        ## 2.2.1 Generate white path tracers
-        self.white_path_traces = self.generate_tracers()
+    def shred(self):
+        """Finds the text lines in the image, straightens them (WIP) and returns
+        the processed lines (WIP)
+        """
 
-        ## 2.2.2 Label line areas
-        self.labeled_line_areas = self.get_lla()
+        # 2.2.1 Tracing line areas (LA(x, y))
+        if self.debug:
+            print("\x1b[1K\rGenerating white path traces...", end='')
+        line_areas = self.__generate_traces()
 
-    def prepare_image(self, image_path: str) -> np.ndarray:
+        # 2.2.2 Labeling line areas (LLA(x, y))
+        if self.debug: print("\x1b[1K\rLabeling line areas...", end='')
+        n_lines, labeled_line_areas = self.__get_lla(line_areas)
+
+        # 2.2.3 Tracing line centers (LC(x, y))
+        if self.debug:
+            print("\x1b[1K\rGenerating black path traces...", end='')
+        line_centers = self.__generate_traces(invert=True)
+
+        # 2.2.4 Labeling line centers
+        if self.debug: print("\x1b[1K\rLabeling line centers...", end='')
+        labeled_line_centers = self.__get_llc(labeled_line_areas, line_centers, n_lines)
+
+        # 2.3.1 Assigning to line centers
+        if self.debug: print("\x1b[1K\rSeparating lines, pass 1...", end='')
+        result_main = self.__separate_lines(n_lines, labeled_line_centers)
+
+        if self.debug: print("\x1b[1K\rDone.")
+
+    def __prepare_image(self, image_path: str) -> np.ndarray:
         # Prepare the image
         image = Image.open(image_path)
         # make sure we're in grayscale
@@ -48,16 +92,19 @@ class Shredder:
         # We want ones where the image is black
         np_image_binarized = np.where(np_image < 127, 1, 0)
 
-        if self.save_debug_imgs:
+        if self.debug:
             output = Image.fromarray(
                 (np_image_binarized * 255).astype(np.uint8))
-            output.save("binarized_image.png")
+            output.save(
+                os.path.join(self.output_path,
+                             f"{self.im_counter}_binarized_image.png"))
+            self.im_counter += 1
 
         rotated = ndimage.rotate(np_image_binarized, 180)
 
-        return rotated # np_image_binarized
+        return rotated  # np_image_binarized
 
-    def find_letter_height(self) -> float:
+    def __find_letter_height(self) -> float:
         """Finds the average letter height based on the average height of the
         connected components
 
@@ -73,42 +120,52 @@ class Shredder:
 
         return np.mean(heights)
 
-    def blur_image(self) -> np.ndarray:
+    def __blur_image(self) -> np.ndarray:
         """Blurs the image with the given blur window.
 
         Returns:
             np.ndarray: The blurred image
         """
 
-        if self.save_debug_imgs:
-            output = Image.fromarray(
-                (self.image.astype(np.uint8) * 255).astype(np.uint8))
-            output.save("binarized_dilated.png")
-
         # Use a uniform filter as a fast blur operator
-        # ! different from the paper!
-        blurred_image = ndimage.uniform_filter(
-            self.image.astype(np.float64), size=(self.blur_height, self.blur_width)
-        )
+        # This is different from the paper!
+        blurred_image = ndimage.uniform_filter(self.image.astype(np.float64),
+                                               size=(self.blur_height,
+                                                     self.blur_width))
 
-        if self.save_debug_imgs:
+        if self.debug:
             # increase range so blurred image is visible
-            output = np.interp(
-                blurred_image, (blurred_image.min(), blurred_image.max()), (0, 255))
-            output = Image.fromarray(blurred_image.astype(np.uint8))
-            output.save("binarized_blurred_image.png")
+            output = np.interp(blurred_image,
+                               (blurred_image.min(), blurred_image.max()),
+                               (0, 255))
+            output = Image.fromarray(output.astype(np.uint8))
+            output.save(
+                os.path.join(self.output_path,
+                             f"{self.im_counter}_binarized_image_blurred.png"))
+            self.im_counter += 1
 
         return blurred_image
 
-    def generate_tracers(self) -> np.ndarray:
-        """Generates the tracers between the text lines. This is a vectorized
-        operation.
+    def __generate_traces(self, invert: bool = False) -> np.ndarray:
+        """Generates a set of traces.
+
+        Args: invert (bool, optional): Whether to invert the image before
+            generating the tracers. Defaults to False.
+
+        Returns: np.ndarray: A binary image containing the tracers.
         """
 
         # k cannot be higher than the max y, x corresponds to image x
         max_y, max_x = self.blurred_image.shape
 
+        # used for calculating the tracers
         offset = self.blur_height // 2
+
+        # Blurred image, possibly inverted
+        if invert:
+            source_image = 255 - self.blurred_image
+        else:
+            source_image = self.blurred_image
 
         # Precompute tracers. Results in a (x × k) array, where k indicates the
         # kth tracer
@@ -123,83 +180,180 @@ class Shredder:
 
                 # calculate lhs y and bound it in [0, max_y)
                 lhs_y = np.clip(prev + offset, 0, max_y - 1)
-                lhs = self.blurred_image[lhs_y, x]
+                lhs = source_image[lhs_y, x]
 
                 # # calculate rhs y and bound it in [0, max_y)
                 rhs_y = np.clip(prev - offset, 0, max_y - 1)
-                rhs = self.blurred_image[rhs_y, x]
+                rhs = source_image[rhs_y, x]
 
-                tracers[:, x] = np.where(
-                    lhs > rhs, prev - 1, np.where(lhs < rhs, prev + 1, prev)
-                )
+                tracers[:, x] = np.where(lhs > rhs, prev - 1,
+                                         np.where(lhs < rhs, prev + 1, prev))
 
         # Prepare image to save traces to
-        tracer_image = np.empty_like(self.image)
+        traces = np.empty_like(self.image)
 
         # Calculate tracers (vectorized)
         for x in range(max_x):
             col_k_values = tracers[:, x]
             col_y_values = np.arange(0, max_y)
-            tracer_image[:, x] = np.where(
-                np.isin(col_y_values, col_k_values), 0, 1)
+            if invert:
+                traces[:, x] = np.where(np.isin(col_y_values, col_k_values), 1,
+                                        0)
+            else:
+                traces[:, x] = np.where(np.isin(col_y_values, col_k_values), 0,
+                                        1)
 
         # If necessary, save intermediary debug images
-        if self.save_debug_imgs:
+        if self.debug:
             # array of k values
             output_1 = Image.fromarray(
-                np.interp(tracers, (tracers.min(), tracers.max()), (0, 255)).astype(
-                    np.uint8
-                )
-            )
-            output_1.save("tracer_helper.png")
+                np.interp(tracers, (tracers.min(), tracers.max()),
+                          (0, 255)).astype(np.uint8))
+
+            if invert:
+                is_inverted = "_inverted"
+            else:
+                is_inverted = ""
+
+            output_1.save(
+                os.path.join(
+                    self.output_path,
+                    f"{self.im_counter}_tracer_helper{is_inverted}.png"))
+            self.im_counter += 1
 
             # tracers
             output_2 = Image.fromarray(
-                (
-                    np.interp(
-                        tracer_image, (tracer_image.min(),
-                                       tracer_image.max()), (0, 255)
-                    )
-                ).astype(np.uint8)
-            )
-            output_2.save("tracers.png")
+                (np.interp(traces, (traces.min(), traces.max()),
+                           (0, 255))).astype(np.uint8))
+            output_2.save(
+                os.path.join(self.output_path,
+                             f"{self.im_counter}_tracers{is_inverted}.png"))
+            self.im_counter += 1
 
-        # Return tracers
-        return tracer_image
+        # Return traces
+        return traces
 
-    def get_lla(self):
-        """Finds and labels lines.
+    def __get_lla(self, line_areas: np.ndarray) -> Tuple[int, np.ndarray]:
+        """Assigns labels to lines
 
-        Returns:
-            np.ndarray: An array the size of the original image, with components labeled using an integer.
+        Args: line_areas (np.ndarray): The line areas resulting from tracing the
+            interline spacing
+
+        Returns: Tuple[int, np.ndarray]: The number of lines and the labeled
+            image.
         """
 
         # find connected components
-        line_areas, n_lines = ndimage.label(self.white_path_traces)
+        labels, n_lines = ndimage.label(line_areas)
 
         # set minimum pixel count
         min_pix_count = self.letter_height**2
 
         # find the pixel counts of every labeled image part
-        label_sizes = ndimage.labeled_comprehension(self.white_path_traces, line_areas, np.arange(1, n_lines + 1), np.size, np.uint16, 0, False)
+        label_sizes = ndimage.labeled_comprehension(line_areas, labels,
+                                                    np.arange(1, n_lines + 1),
+                                                    np.size, np.uint16, 0,
+                                                    False)
 
         # Mark labels to keep
-        labels_to_keep = np.argwhere(label_sizes >= min_pix_count).flatten() + 1 # labels should start at 1
+        # labels should start at 1
+        labels_to_keep = np.argwhere(
+            label_sizes >= min_pix_count).flatten() + 1
 
         # Set everything we do not want to keep to 0 and relabel so it is labels are monotonously increasing
         output_labels = np.zeros_like(self.image)
 
         for i, l in enumerate(labels_to_keep):
-            output_labels += np.where(line_areas == l, i + 1, 0)
+            output_labels += np.where(labels == l, i + 1, 0)
 
-        if self.save_debug_imgs:
-            output_labels = np.ma.masked_where(output_labels == 0, output_labels)
-            cm = plt.get_cmap('turbo', lut=len(labels_to_keep) + 1).copy()
+        if self.debug:
+            output_labels = np.ma.masked_where(output_labels == 0,
+                                               output_labels)
+            cm = plt.get_cmap('turbo', lut=len(labels_to_keep)).copy()
             cm.set_bad(color='black')
             colored_image = cm(output_labels)
-            Image.fromarray((colored_image[:, :, :3] * 255).astype(np.uint8)).save('line_labels.png')
+            Image.fromarray(
+                (colored_image[:, :, :3] * 255).astype(np.uint8)).save(
+                    os.path.join(self.output_path,
+                                 f"{self.im_counter}_line_labels.png"))
+            self.im_counter += 1
 
-        return output_labels
+        return len(labels_to_keep), output_labels
+
+    def __get_llc(self, labeled_line_areas: np.ndarray,
+                  line_centers: np.ndarray, n_labels: int) -> np.ndarray:
+        
+        llc = labeled_line_areas * line_centers
+
+        if self.debug:
+            output_labels = np.ma.masked_where(llc == 0,
+                                               llc)
+            cm = plt.get_cmap('turbo', lut=n_labels).copy()
+            cm.set_bad(color='black')
+            colored_image = cm(output_labels)
+            Image.fromarray(
+                (colored_image[:, :, :3] * 255).astype(np.uint8)).save(
+                    os.path.join(self.output_path,
+                                 f"{self.im_counter}_line_center_labels.png"))
+            self.im_counter += 1
+        
+        return llc
+
+    def __separate_lines(self, n_lines,
+                         labeled_line_centers: np.ndarray) -> np.ndarray:
+        # prepare result
+        res = np.zeros_like(self.image)
+
+        print()
+
+        for label in range(1, n_lines + 1):
+            # find indices of the current line
+            line_coordinates = np.transpose(np.nonzero(labeled_line_centers == label))
+
+            def select_component(component, coordinates):
+                # linear index to 2d index so we can compare with
+                # line_coordinates
+                c = np.transpose(np.unravel_index(coordinates, res.shape))
+
+                # check if any of the coordinates of the component line up with
+                # a part of the line center, and if so, return the label of that
+                # component. Otherwise, return 0. 2d set intersection based on
+                # https://stackoverflow.com/a/55696999/4545692
+                if np.any(np.unique(c[np.where(cdist(c, line_coordinates) == 0)[0]], axis=0)):
+                    return component[0]
+                else:
+                    return 0
+
+            # Check which of the connected components in the image are on the line
+            component_labels = ndimage.labeled_comprehension(
+                self.components, self.components, np.arange(1, self.n_components + 1),
+                select_component, np.uint16, 0, True)
+
+            # filter out 0s
+            component_labels = component_labels[component_labels != 0]
+            print("Components:", np.unique(component_labels)[:5])
+
+            # # find where the components are in the image
+            # c_loc = np.nonzero(np.isin(self.components, component_labels))
+
+            # # assign label to components on the line
+            # res[c_loc] = label
+            res = np.where(np.isin(self.components, component_labels), label, res)
+
+        if self.debug:
+            output_labels = np.ma.masked_where(res == 0, res)
+            cm = plt.get_cmap('turbo', lut=n_lines).copy()
+            cm.set_bad(color='black')
+            colored_image = cm(output_labels)
+            Image.fromarray(
+                (colored_image[:, :, :3] * 255).astype(np.uint8)).save(
+                    os.path.join(
+                        self.output_path,
+                        f"{self.im_counter}_letter_labels_step_1.png"))
+            self.im_counter += 1
+
+        return res
+
 
 if __name__ == "__main__":
 
@@ -208,22 +362,30 @@ if __name__ == "__main__":
     #TODO###################################################################################
 
     parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument("-i", "--image_path", type=str,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("-i",
+                        "--image_path",
+                        type=str,
                         help="path of the image to use")
+    parser.add_argument(
+        "-o",
+        "--output_path",
+        type=str,
+        default="./",
+        help="path to save output images to (mostly for debugging)")
     parser.add_argument(
         "-d",
         "--debug",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Save intermediary images for debugging purposes",
+        help=
+        "Save intermediary images for debugging purposes and show progress",
     )
     args = parser.parse_args()
 
     if args.image_path:
-        shredder = Shredder(args.image_path, args.debug)
-        shredder.generate_tracers()
+        shredder = Shredder(args.image_path, args.debug, args.output_path)
+        shredder.shred()
     else:
         print("Please provide an input image.")
         parser.print_help()
