@@ -335,12 +335,15 @@ def run_experiment(data_dir: str):
     :param data_dir: The directory containing the dataset to use.
     """
     labels = get_labels(data_dir)
+    outputs = []
     for fold in range(N_FOLDS):
         train, test, val = get_kfold_data(data_dir, fold, labels)
         model = get_model(labels)
-        run_model(model, train, test, val)
+        outputs.append(run_model(model, train, test, val))
+
+    print(f'Average test accuracy: {sum(outputs) / len(outputs):.0%}')
+    print("Individual test accuracies: {}".format(outputs))
 
 
 if __name__ == "__main__":
     run_experiment("dataset")
-    # load_images_from_directory("/home/pim/Documents/workspace/handwriting_recognition/data")
