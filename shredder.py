@@ -4,6 +4,7 @@ from typing import Tuple
 from PIL import Image, ImageOps
 import numpy as np
 from numpy.core.fromnumeric import ndim, trace
+from numpy.lib.arraysetops import unique
 from scipy import ndimage
 from scipy.spatial.distance import cdist
 import matplotlib.pyplot as plt
@@ -73,7 +74,8 @@ class Shredder:
 
         # 2.2.4 Labeling line centers
         if self.debug: print("\x1b[1K\rLabeling line centers...", end='')
-        labeled_line_centers = self.__get_llc(labeled_line_areas, line_centers, n_lines)
+        labeled_line_centers = self.__get_llc(labeled_line_areas, line_centers,
+                                              n_lines)
 
         # 2.3.1 Assigning to line centers
         if self.debug: print("\x1b[1K\rSeparating lines, pass 1...", end='')
@@ -282,12 +284,11 @@ class Shredder:
 
     def __get_llc(self, labeled_line_areas: np.ndarray,
                   line_centers: np.ndarray, n_labels: int) -> np.ndarray:
-        
+
         llc = labeled_line_areas * line_centers
 
         if self.debug:
-            output_labels = np.ma.masked_where(llc == 0,
-                                               llc)
+            output_labels = np.ma.masked_where(llc == 0, llc)
             cm = plt.get_cmap('turbo', lut=n_labels).copy()
             cm.set_bad(color='black')
             colored_image = cm(output_labels)
@@ -296,49 +297,36 @@ class Shredder:
                     os.path.join(self.output_path,
                                  f"{self.im_counter}_line_center_labels.png"))
             self.im_counter += 1
-        
+
         return llc
 
     def __separate_lines(self, n_lines,
                          labeled_line_centers: np.ndarray) -> np.ndarray:
+        """Separates the lines based on the calculated line centers
+
+        Args: n_lines (int): The number of lines that have been found
+            labeled_line_centers (np.ndarray): The centers of the text lines
+
+        Returns: np.ndarray: All connected components intersecting the center
+            line, labeled with the center line they are intersecting
+        """
         # prepare result
         res = np.zeros_like(self.image)
 
-        print()
-
         for label in range(1, n_lines + 1):
-            # find indices of the current line
-            line_coordinates = np.transpose(np.nonzero(labeled_line_centers == label))
-
-            def select_component(component, coordinates):
-                # linear index to 2d index so we can compare with
-                # line_coordinates
-                c = np.transpose(np.unravel_index(coordinates, res.shape))
-
-                # check if any of the coordinates of the component line up with
-                # a part of the line center, and if so, return the label of that
-                # component. Otherwise, return 0. 2d set intersection based on
-                # https://stackoverflow.com/a/55696999/4545692
-                if np.any(np.unique(c[np.where(cdist(c, line_coordinates) == 0)[0]], axis=0)):
-                    return component[0]
-                else:
-                    return 0
-
-            # Check which of the connected components in the image are on the line
-            component_labels = ndimage.labeled_comprehension(
-                self.components, self.components, np.arange(1, self.n_components + 1),
-                select_component, np.uint16, 0, True)
-
-            # filter out 0s
-            component_labels = component_labels[component_labels != 0]
-            print("Components:", np.unique(component_labels)[:5])
-
-            # # find where the components are in the image
-            # c_loc = np.nonzero(np.isin(self.components, component_labels))
-
-            # # assign label to components on the line
-            # res[c_loc] = label
-            res = np.where(np.isin(self.components, component_labels), label, res)
+            # Find the locations of just the current line
+            this_line = np.where(labeled_line_centers == label,
+                                 labeled_line_centers, 0)
+            # Find the connected components that intersect with the current line
+            components_on_line = np.where(self.components * this_line != 0,
+                                          self.components, 0)
+            # Get the unique components
+            unique_components = np.unique(components_on_line)
+            # Filter out zeroes
+            unique_components = unique_components[unique_components != 0]
+            # Label components on the line
+            res = np.where(np.isin(self.components, unique_components), label,
+                           res)
 
         if self.debug:
             output_labels = np.ma.masked_where(res == 0, res)
