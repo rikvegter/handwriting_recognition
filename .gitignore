@@ -133,3 +133,7 @@ dmypy.json
 
 # VS Code stuff
 .vscode/
+
+# test images and test output
+test_images/
+output/
