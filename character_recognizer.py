@@ -18,7 +18,7 @@ SHUFFLE_BUFFER_SIZE = 256
 Note that changing the number of folds also requires (re)creating the dataset to support it. 
 """
 N_FOLDS = 5
-AUGMENTATION = True
+AUGMENTATION = False
 
 """
 While the true max image width found in the data is 196 pixels, there are only 16 images that exceed 68 pixels in width.
@@ -66,7 +66,7 @@ def load_images_from_directory(data_dir: str) -> np.array:
     :return: A 4d Numpy array of the shape (num_images, MAX_IMG_HEIGHT, MAX_IMG_WIDTH, 3).
     """
     _, _, filenames = next(os.walk(data_dir))
-    data = np.zeros((len(filenames), MAX_IMG_HEIGHT, MAX_IMG_WIDTH, 3))
+    data = np.zeros((len(filenames), MAX_IMG_HEIGHT, MAX_IMG_WIDTH, 3), dtype=np.uint8)
 
     skipped = 0
     for idx, file in enumerate(filenames):
@@ -84,14 +84,36 @@ def load_images_from_directory(data_dir: str) -> np.array:
             image = image.convert('1')
 
         # noinspection PyTypeChecker
-        image_np = np.asarray(image)
+        image_np = np.asarray(image, dtype=np.uint8)
+
+        # Invert and map all values to [0 255], and, considering the images are supposed to be binary,
+        # remove all values in-between. E.g. [0, 140, 254, 255] will be mapped to [255, 255, 255, 0]
+        # (i.e. everything other than pure white is mapped to white, and pure white is mapped to black).
+        # Some images are mapped to [0 1]. These are expanded to [0 255] so all images are the same.
+        # The colors are inverted so the features are value 255 instead of 0, which would interfere with 0-padding.
+        if np.amax(image_np) > 1:
+            scale_fun = lambda x: 255 if x < 255 else 0
+        else:
+            scale_fun = lambda x: 255 if x == 0 else 0
+        image_np = np.vectorize(scale_fun)(image_np)
 
         # Create a new, 4th dimension with 3 values (RGB).
         # While the current image
         image_np = np.repeat(image_np[..., np.newaxis], 3, -1)
+        image_np = image_np.astype(dtype=np.uint8)
 
         real_idx = idx - skipped
-        data[real_idx, 0:image_np.shape[0], 0:image_np.shape[1], 0:image_np.shape[2]] = image_np
+        image_shape = image_np.shape
+        # Use height + width offset of half the difference between the max and current height/width.
+        # This will cause the glyph to be centered in the 0-padding, which reduces data loss when using
+        # certain data augmentation methods (e.g. rotation/zoom).
+        off_h = int((MAX_IMG_HEIGHT - image_shape[0]) / 2)
+        off_w = int((MAX_IMG_WIDTH - image_shape[1]) / 2)
+        data[real_idx, off_h:image_shape[0] + off_h, off_w:image_shape[1] + off_w, 0:image_shape[2]] = image_np
+
+        # Uncomment these two lines to export the images to PNG RGB images. Make sure the output directory exists!
+        # rewritten = Image.fromarray(data[real_idx, :, :, :])
+        # rewritten.save("rewritten_images/" + file + ".png")
 
     if skipped > 0:
         data = data[0:-skipped, :, :, :]
