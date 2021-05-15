@@ -53,9 +53,11 @@ class Shredder:
         if self.debug: print("\x1b[1K\rBlurring image...", end='')
         self.blurred_image = self.__blur_image()
 
-    def shred(self):
-        """Finds the text lines in the image, straightens them (WIP) and returns
-        the processed lines (WIP)
+    def shred(self) -> Tuple[int, np.ndarray]:
+        """Labels all connected components in an image as belonging to a line.
+
+        Returns:
+            Tuple[int, np.ndarray]: A labeled image and the number of labels.
         """
 
         # 2.2.1 Tracing line areas (LA(x, y))
@@ -79,9 +81,20 @@ class Shredder:
 
         # 2.3.1 Assigning to line centers
         if self.debug: print("\x1b[1K\rSeparating lines, pass 1...", end='')
-        result_main = self.__separate_lines(n_lines, labeled_line_centers)
+        result_line_centers = self.__separate_lines(n_lines, labeled_line_centers)
 
-        if self.debug: print("\x1b[1K\rDone.")
+        # 2.3.2 Assigning to line areas
+        if self.debug: print("\x1b[1K\rSeparating lines, pass 2...", end='')
+        result_line_areas = self.__separate_lines(n_lines, labeled_line_areas)
+
+        # The original paper adds the results from 2.3.2 directly to RES(x,y),
+        # but for us it is more convenient to do the adding here
+        intermediate_result = result_line_areas + result_line_centers
+
+        # 2.3.3 Assigning remaining pixels
+        result_final = self.__assign_remaining(n_lines, intermediate_result, labeled_line_areas)
+
+        return n_lines, result_final
 
     def __prepare_image(self, image_path: str) -> np.ndarray:
         # Prepare the image
@@ -300,7 +313,7 @@ class Shredder:
 
         return llc
 
-    def __separate_lines(self, n_lines,
+    def __separate_lines(self, n_lines: int,
                          labeled_line_centers: np.ndarray) -> np.ndarray:
         """Separates the lines based on the calculated line centers
 
@@ -310,6 +323,7 @@ class Shredder:
         Returns: np.ndarray: All connected components intersecting the center
             line, labeled with the center line they are intersecting
         """
+
         # prepare result
         res = np.zeros_like(self.image)
 
@@ -327,8 +341,11 @@ class Shredder:
             # Label components on the line
             res = np.where(np.isin(self.components, unique_components), label,
                            res)
+            # Remove from original set of labeled components LIN(x, y)
+            self.components = np.where(np.isin(self.components, unique_components), 0, self.components)
 
         if self.debug:
+            # Print a colored image to represent component labeling
             output_labels = np.ma.masked_where(res == 0, res)
             cm = plt.get_cmap('turbo', lut=n_lines).copy()
             cm.set_bad(color='black')
@@ -341,6 +358,45 @@ class Shredder:
             self.im_counter += 1
 
         return res
+
+    def __assign_remaining(self, n_lines: int, intermediate_result: np.ndarray, labeled_line_areas: np.ndarray):
+        """After steps 2.3.1 and 2.3.2, there might be some unlabeled
+        components. This step takes care of them.
+
+        Args: intermediate_result (np.ndarray): The result of the earlier
+            labeling steps.
+        """
+
+        # We take labeled_line_areas iff LIN(x, y) != AND RES(x, y) == 0.
+        # | RES(x, y)   if    LIN(x, y) == 0  OR  RES(x, y) != 0
+        # | LLA(x, y)   otherwise
+        # The way the paper writes this is a bit convoluted but is equal to the 
+        # above.
+        final_image = np.where(self.components == 0,
+            # LIN(x, y) == 0; RES(x, y) = whatever
+            intermediate_result,
+            np.where(intermediate_result == 0,
+                # LIN(x, y) != 0; RES(x, y) == 0
+                labeled_line_areas,
+                # LIN(x, y) != 0; RES(x, y) != 0
+                intermediate_result
+            )
+        )
+
+        if self.debug:
+            # Print a colored image to represent component labeling
+            output_labels = np.ma.masked_where(final_image == 0, final_image)
+            cm = plt.get_cmap('turbo', lut=n_lines).copy()
+            cm.set_bad(color='black')
+            colored_image = cm(output_labels)
+            Image.fromarray(
+                (colored_image[:, :, :3] * 255).astype(np.uint8)).save(
+                    os.path.join(
+                        self.output_path,
+                        f"{self.im_counter}_letter_labels_final.png"))
+            self.im_counter += 1
+
+        return final_image
 
 
 if __name__ == "__main__":
