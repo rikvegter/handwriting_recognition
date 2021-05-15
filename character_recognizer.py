@@ -12,13 +12,14 @@ from PIL import Image
 from tensorflow.keras import layers
 from tensorflow.keras.layers.experimental import preprocessing
 
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 SHUFFLE_BUFFER_SIZE = 256
 """
 Note that changing the number of folds also requires (re)creating the dataset to support it. 
 """
 N_FOLDS = 5
-AUGMENTATION = False
+DATA_AUGMENTATION_DATASET = False
+DATA_AUGMENTATION_LAYERS = True
 
 """
 While the true max image width found in the data is 196 pixels, there are only 16 images that exceed 68 pixels in width.
@@ -198,7 +199,7 @@ def get_kfold_data(data_dir: str, fold: int, labels: List[str]) -> [tf.data.Data
     for idx in range(N_FOLDS):
         if idx != fold and idx != fold_validate:
             fold_path = data_dir + "/" + str(idx)
-            if AUGMENTATION:
+            if DATA_AUGMENTATION_DATASET:
                 fold_path += "_augmented"
             fold_data, fold_labels = get_data(fold_path, labels)
             train = np.concatenate((train, fold_data), axis=0)
@@ -211,7 +212,7 @@ def get_kfold_data(data_dir: str, fold: int, labels: List[str]) -> [tf.data.Data
 
     test_ds = create_dataset(test, test_labels)
     train_ds = create_dataset(train, train_labels, shuffle=True)
-    validate_ds = create_dataset(validate, validate_labels)
+    validate_ds = create_dataset(validate, validate_labels, shuffle=True)
 
     print("Created datasets!")
 
@@ -243,14 +244,14 @@ def get_model(labels) -> tf.keras.models.Model:
     model = tf.keras.Sequential()
     model.add(layers.Input(shape=input_shape))
     model.add(preprocessing.Rescaling(1. / 255))
-    if AUGMENTATION:
+    if DATA_AUGMENTATION_LAYERS:
         model.add(preprocessing.RandomRotation(factor=(1 / 6)))
         model.add(preprocessing.RandomZoom(height_factor=0.2))
 
-    model.add(tf.keras.applications.DenseNet201(input_tensor=layers.Input(shape=input_shape)))
+    model.add(tf.keras.applications.DenseNet121(input_shape=input_shape, include_top=False, pooling="avg"))
 
-    model.add(layers.Dense(128, activation="relu")),
-    model.add(layers.Dense(len(labels), activation="relu"))
+    model.add(layers.Dense(128, activation="tanh")),
+    model.add(layers.Dense(len(labels), activation="tanh"))
 
     model.compile(
         optimizer=tf.optimizers.Adam(),
@@ -271,7 +272,7 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
     :param validate: The dataset containing the validation data.
     :return: The model's accuracy on the test dataset.
     """
-    EPOCHS = 16
+    EPOCHS = 48
 
     try:
         model.summary()
@@ -286,7 +287,7 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
                         validation_data=validate,
                         epochs=EPOCHS,
                         batch_size=BATCH_SIZE,
-                        callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=5),
+                        callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=8),
                         )
 
     y_true = np.zeros(0)
