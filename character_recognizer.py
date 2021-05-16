@@ -311,7 +311,6 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
     #
 
     ax = sn.heatmap(confusion_matrix(y_true, y_pred), annot=False, xticklabels=labels, yticklabels=labels)
-    ax.figure.tight_layout()
 
     # Use our own x/y ticks on full integers. The default x/y ticks go on halves, meaning that the grid would
     # go through the center of each square in the heatmap, which is just confusing.
@@ -325,6 +324,11 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
         tic.tick1line.set_visible(False)
     for tic in ax.yaxis.get_minor_ticks():
         tic.tick1line.set_visible(False)
+
+    ax.set_title("Confusion Matrix of Character Recognizer")
+    ax.set_xlabel("True label")
+    ax.set_ylabel("Predicted label")
+    ax.figure.tight_layout()
 
     plt.show()
 
