@@ -22,6 +22,7 @@ Note that changing the number of folds also requires (re)creating the dataset to
 N_FOLDS = 5
 DATA_AUGMENTATION_DATASET = False
 DATA_AUGMENTATION_LAYERS = True
+EPOCHS = 48
 
 """
 While the true max image width found in the data is 196 pixels, there are only 16 images that exceed 68 pixels in width.
@@ -89,15 +90,15 @@ def load_images_from_directory(data_dir: str) -> np.array:
         # noinspection PyTypeChecker
         image_np = np.asarray(image, dtype=np.uint8)
 
-        # Invert and map all values to [0 255], and, considering the images are supposed to be binary,
-        # remove all values in-between. E.g. [0, 140, 254, 255] will be mapped to [255, 255, 255, 0]
-        # (i.e. everything other than pure white is mapped to white, and pure white is mapped to black).
-        # Some images are mapped to [0 1]. These are expanded to [0 255] so all images are the same.
-        # The colors are inverted so the features are value 255 instead of 0, which would interfere with 0-padding.
+        # Invert and map all values to [0 255]. Some images are mapped to [0 1].
+        # These are expanded to [0 255] so all images are the same.
+        # The colors are inverted so the features have non-0 values, to avoid issues with 0-padding.
         if np.amax(image_np) > 1:
-            scale_fun = lambda x: 255 if x < 255 else 0
+            def scale_fun(x):
+                return 255 - x
         else:
-            scale_fun = lambda x: 255 if x == 0 else 0
+            def scale_fun(x):
+                return 255 if x == 0 else 0
         image_np = np.vectorize(scale_fun)(image_np)
 
         # Create a new, 4th dimension with 3 values (RGB).
@@ -276,8 +277,6 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
     :param labels: The list of labels.
     :return: The model's accuracy on the test dataset in [0, 1].
     """
-    EPOCHS = 48
-
     try:
         model.summary()
     except ValueError:
