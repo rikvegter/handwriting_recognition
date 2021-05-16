@@ -7,8 +7,10 @@ import PIL
 import matplotlib.pyplot as plt
 import numpy
 import numpy as np
+import seaborn as sn
 import tensorflow as tf
 from PIL import Image
+from sklearn.metrics import confusion_matrix
 from tensorflow.keras import layers
 from tensorflow.keras.layers.experimental import preprocessing
 
@@ -262,7 +264,8 @@ def get_model(labels) -> tf.keras.models.Model:
     return model
 
 
-def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.data.Dataset, validate: tf.data.Dataset):
+def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.data.Dataset, validate: tf.data.Dataset,
+              labels: List[str]) -> float:
     """
     Trains and tests a model.
 
@@ -270,7 +273,8 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
     :param train: The dataset containing the training data.
     :param test: The dataset containing the test data.
     :param validate: The dataset containing the validation data.
-    :return: The model's accuracy on the test dataset.
+    :param labels: The list of labels.
+    :return: The model's accuracy on the test dataset in [0, 1].
     """
     EPOCHS = 48
 
@@ -303,6 +307,26 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
 
     loss = history.history["loss"]
     val_loss = history.history["val_loss"]
+
+    #
+
+    ax = sn.heatmap(confusion_matrix(y_true, y_pred), annot=False, xticklabels=labels, yticklabels=labels)
+    ax.figure.tight_layout()
+
+    # Use our own x/y ticks on full integers. The default x/y ticks go on halves, meaning that the grid would
+    # go through the center of each square in the heatmap, which is just confusing.
+    # We use minor ticks to avoid shifting the x/y labels (which are attached to the major ticks).
+    ax.set_xticks(range(0, len(labels)), minor=True)
+    ax.set_yticks(range(0, len(labels)), minor=True)
+    ax.grid(b=True, which='minor', axis='both')
+
+    # Get rid of the annoying minor ticks on the x/y axes that would appear there because we're using the minor ticks.
+    for tic in ax.xaxis.get_minor_ticks():
+        tic.tick1line.set_visible(False)
+    for tic in ax.yaxis.get_minor_ticks():
+        tic.tick1line.set_visible(False)
+
+    plt.show()
 
     #
 
@@ -340,7 +364,7 @@ def run_experiment(data_dir: str):
     for fold in range(N_FOLDS):
         train, test, val = get_kfold_data(data_dir, fold, labels)
         model = get_model(labels)
-        outputs.append(run_model(model, train, test, val))
+        outputs.append(run_model(model, train, test, val, labels))
 
     print(f'Average test accuracy: {sum(outputs) / len(outputs):.0%}')
     print("Individual test accuracies: {}".format(outputs))
