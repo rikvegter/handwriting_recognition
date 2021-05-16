@@ -245,7 +245,7 @@ def get_model(labels) -> tf.keras.models.Model:
     model.add(layers.Input(shape=input_shape))
     model.add(preprocessing.Rescaling(1. / 255))
     if DATA_AUGMENTATION_LAYERS:
-        model.add(preprocessing.RandomRotation(factor=(1 / 6)))
+        model.add(preprocessing.RandomRotation(factor=(1 / 36)))  # +/-  1/36 * 2pi rad (10 deg)
         model.add(preprocessing.RandomZoom(height_factor=0.2))
 
     model.add(tf.keras.applications.DenseNet121(input_shape=input_shape, include_top=False, pooling="avg"))
@@ -287,7 +287,7 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
                         validation_data=validate,
                         epochs=EPOCHS,
                         batch_size=BATCH_SIZE,
-                        callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=8),
+                        callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=12),
                         )
 
     y_true = np.zeros(0)
