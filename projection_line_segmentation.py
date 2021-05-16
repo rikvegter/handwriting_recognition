@@ -62,6 +62,7 @@ def get_vertical_projection_profile(image):
     return smooth_profile
 
 def create_cropped_images(line_segmentations, image):
+    counter = 0
     for lines in line_segmentations:
         #area = left, upper, right, lower
         left = 1
@@ -69,13 +70,14 @@ def create_cropped_images(line_segmentations, image):
         right = image.size[0]
         bottom = lines[1]
         cropped_image = image.crop((left, top, right, bottom))
-        cropped_image.show()
-        
+
+        cropped_image.save('test_lines/line_segmented_0.jpg')
         break
 
 
 def main():
-    im_path = PATH + 'P106-Fg002-R-C01-R01-binarized.jpg'
+    FILE_NAME = 'P106-Fg002-R-C01-R01-binarized.jpg'
+    im_path = PATH + FILE_NAME
     image = get_image(im_path)
     vert_projection_profile = get_vertical_projection_profile(image)
 
@@ -85,13 +87,12 @@ def main():
     line_segmentations = find_line_segmentations(vert_projection_profile)
     create_cropped_images(line_segmentations, image)
 
-
     #line_segmented_image = draw_line_segmentations(image, local_minima)
-    image.show()
 
-    plt.plot(vert_projection_profile)
 
-    plt.show()
+    #plt.plot(vert_projection_profile)
+
+    #plt.show()
 
 
 
