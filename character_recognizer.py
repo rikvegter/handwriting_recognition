@@ -22,7 +22,7 @@ Note that changing the number of folds also requires (re)creating the dataset to
 N_FOLDS = 5
 DATA_AUGMENTATION_DATASET = False
 DATA_AUGMENTATION_LAYERS = True
-EPOCHS = 48
+EPOCHS = 64
 
 """
 While the true max image width found in the data is 196 pixels, there are only 16 images that exceed 68 pixels in width.
@@ -253,6 +253,7 @@ def get_model(labels) -> tf.keras.models.Model:
 
     model.add(tf.keras.applications.DenseNet121(input_shape=input_shape, include_top=False, pooling="avg"))
 
+    model.add(layers.Dropout(0.2))
     model.add(layers.Dense(128, activation="tanh")),
     model.add(layers.Dense(len(labels), activation="tanh"))
 
@@ -290,7 +291,6 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
                         validation_data=validate,
                         epochs=EPOCHS,
                         batch_size=BATCH_SIZE,
-                        callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=12),
                         )
 
     y_true = np.zeros(0)
