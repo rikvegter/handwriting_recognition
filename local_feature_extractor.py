@@ -60,6 +60,28 @@ def get_labels(data_dir):
     search_dir = data_dir
     return [folder for folder in listdir(search_dir) if os.path.isdir(search_dir + "/" + folder)]
 
+def get_horizontal_projection_profile(image):
+    width, height = image.size
+    horizon_profile = []
+
+    for i in range(0, width):
+        sum_pixel_value = 0
+        for j in range(0, height):
+            if isinstance(image.getpixel((j, i)), (tuple)):
+                continue
+            sum_pixel_value += image.getpixel((i, j))
+
+        horizon_profile.append(sum_pixel_value)
+
+    #Normalize the horizon profile
+    normalized_horizon_profile = [x / image.size[1] for x in horizon_profile]
+
+    #For data reduction purposes, cast the list to integers
+    normalized_horizon_profile = [int(x) for x in normalized_horizon_profile]
+
+    return normalized_horizon_profile
+
+
 #Returns the summed pixel values per pixel height
 def get_vertical_projection_profile(image):
     width, height = image.size
@@ -112,7 +134,7 @@ def read_img(file_name):
 
 def main():
     labels = get_labels(data_dir)
-    column_names = ['height', 'label']
+    column_names = ['height', 'label', 'width']
     df = pd.DataFrame(columns = column_names)
 
     for letter in labels:
@@ -124,13 +146,22 @@ def main():
             #Calculate features
             vert_profile = get_vertical_projection_profile(im)
             vert_profile = put_profile_in_middle(vert_profile)
-            height = get_height_of_letter(vert_profile)
 
-            #Convert the features to pandas series and combine
-            vert_profile_series = pd.Series(vert_profile)
-            local_features = {'height': height, 'label': letter}
+            horizon_profile = get_horizontal_projection_profile(im)
+            horizon_profile = put_profile_in_middle(horizon_profile)
+
+            height = get_height_of_letter(vert_profile)
+            width = get_height_of_letter(horizon_profile)
+
+            #Convert the features to pandas series and combine them
+            profile = np.concatenate((vert_profile, horizon_profile), axis = 0)
+            profile_series = pd.Series(profile)
+
+
+            local_features = {'height': height, 'label': letter, 'width': width}
             local_features_series = pd.Series(local_features)
-            series_to_add = local_features_series.append(vert_profile_series)
+            series_to_add = local_features_series.append(profile_series)
+            
 
             #append the PD series to the dataframe
             df = df.append(series_to_add, ignore_index = True)
