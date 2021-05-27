@@ -58,18 +58,8 @@ def main():
     principalDf = pd.DataFrame(data = principal_components, columns = component_names)
 
     finalDf = pd.concat([principalDf, df[['label']]], axis = 1)
-
     import pdb; pdb.set_trace()
-
-
-
-
-
-    #plot_components(finalDf)
-
-
-
-
+    finalDf.to_pickle('pca_components_features.pkl')
 
 
 if __name__ == "__main__":
