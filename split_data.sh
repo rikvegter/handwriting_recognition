@@ -8,6 +8,7 @@ function split_files() {
     split=$1
     total_count=$2
     name="$3"
+    file_list="$4"
     
     dir="$OUTPUT/$split/$name/"
  
@@ -19,21 +20,20 @@ function split_files() {
     # When we're at the last split, just grab all remaining files.
     test $split -eq $(($PARTS - 1)) && grab=99999 || grab=$(awk "BEGIN {print int(($split + 1) * $total_count / $PARTS) - $skip + 1}")
  
-    find "$INPUT/$name" -type f | tail -n+$skip | head -n$grab | xargs -d'\n' -I{} cp -u {} "$dir"
+    echo "$file_list" | tail -n+$skip | head -n$grab | xargs -d'\n' -I{} cp -u {} "$dir"
 }
 
-declare -A file_counts
-while read -r line; do
-    name=$(echo "$line" | grep -o "[a-zA-Z-]*$")
-    count=$(find "$line" -type f | wc -l)
-    file_counts[$name]=$(($count))
-done < <(find "$INPUT" -maxdepth 1 -type d | tail -n+2)
+find "$INPUT" -maxdepth 1 -type d | tail -n+2 | while read -r directory; do
+    files=$(find "$directory" -type f | shuf)
+    character_name=$(echo "$directory" | grep -o "[a-zA-Z-]*$")
+    file_count=$(echo "$files" | wc -l)
 
-for entry in "${!file_counts[@]}"; do
     for ((i=0; i<$PARTS; i++)); do
-        split_files $i $((file_counts["$entry"])) "$entry"
+        split_files $i $file_count "$character_name" "$files"
     done
 done
+
+
 
 
 
