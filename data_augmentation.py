@@ -12,8 +12,8 @@ AUGMENTED_DIRECTORY_SUFFIX: str = "_augmented"
 SHEAR_FACTOR: float = 0.3
 SHIFT_FACTOR: float = 0.2
 
-SHEAR_COUNT: int = 1
-SHIFT_COUNT: int = 1
+SHEAR_COUNT: int = 0
+SHIFT_COUNT: int = 0
 ENABLE_EROSION: bool = True
 ENABLE_DILATION: bool = True
 
