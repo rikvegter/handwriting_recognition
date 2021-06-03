@@ -9,7 +9,6 @@ from scipy import ndimage
 from scipy.spatial.distance import cdist
 import matplotlib.pyplot as plt
 
-
 class Shredder:
     """Implementation of "Handwritten Text Line Segmentation by Shredding Text
     into its Lines" by Anguelos Nicolaou and Basilis Gatos (2009; doi:10/b5wsx6)
@@ -26,8 +25,8 @@ class Shredder:
             to "./".
         """
         # Set debug settings
-        if debug: print("\x1b[1K\rSetting up...", end='')
         self.debug = debug
+        self.__print_debug("Setting up...")
         self.output_path = output_path
         self.im_counter = 0  # for labeling image order
         if debug:
@@ -39,18 +38,17 @@ class Shredder:
         # 2.1 Preprocessing
 
         # Label the connected components
-        if self.debug:
-            print("\x1b[1K\rLabeling connected components...", end='')
+        self.__print_debug("Labeling connected components...")
         self.components, self.n_components = ndimage.label(self.image)
 
         # Find the letter height and define the blurring window
-        if self.debug: print("\x1b[1K\rFinding letter height...", end='')
+        self.__print_debug("Finding letter height...")
         self.letter_height = self.__find_letter_height()
         self.blur_width = (self.letter_height * 4.0).astype(int)
         self.blur_height = (self.letter_height * 1.0).astype(int)
 
         # Blur the image (B(x, y))
-        if self.debug: print("\x1b[1K\rBlurring image...", end='')
+        self.__print_debug("Blurring image...")
         self.blurred_image = self.__blur_image()
 
     def shred(self) -> Tuple[int, np.ndarray]:
@@ -61,30 +59,28 @@ class Shredder:
         """
 
         # 2.2.1 Tracing line areas (LA(x, y))
-        if self.debug:
-            print("\x1b[1K\rGenerating white path traces...", end='')
+        self.__print_debug("Generating white path traces...")
         line_areas = self.__generate_traces()
 
         # 2.2.2 Labeling line areas (LLA(x, y))
-        if self.debug: print("\x1b[1K\rLabeling line areas...", end='')
+        self.__print_debug("Labeling line areas...")
         n_lines, labeled_line_areas = self.__get_lla(line_areas)
 
         # 2.2.3 Tracing line centers (LC(x, y))
-        if self.debug:
-            print("\x1b[1K\rGenerating black path traces...", end='')
+        self.__print_debug("Generating black path traces...")
         line_centers = self.__generate_traces(invert=True)
 
         # 2.2.4 Labeling line centers
-        if self.debug: print("\x1b[1K\rLabeling line centers...", end='')
+        self.__print_debug("Labeling line centers...")
         labeled_line_centers = self.__get_llc(labeled_line_areas, line_centers,
                                               n_lines)
 
         # 2.3.1 Assigning to line centers
-        if self.debug: print("\x1b[1K\rSeparating lines, pass 1...", end='')
+        self.__print_debug("Separating lines, pass 1...")
         result_line_centers = self.__separate_lines(n_lines, labeled_line_centers)
 
         # 2.3.2 Assigning to line areas
-        if self.debug: print("\x1b[1K\rSeparating lines, pass 2...", end='')
+        self.__print_debug("Separating lines, pass 2...")
         result_line_areas = self.__separate_lines(n_lines, labeled_line_areas)
 
         # The original paper adds the results from 2.3.2 directly to RES(x,y),
@@ -115,7 +111,9 @@ class Shredder:
                              f"{self.im_counter}_binarized_image.png"))
             self.im_counter += 1
 
-        rotated = ndimage.rotate(np_image_binarized, 180)
+        # rotate the image by 180 degrees by mirroring horizontally and
+        # vertically
+        rotated = np.flip(np_image_binarized)
 
         return rotated  # np_image_binarized
 
@@ -383,6 +381,12 @@ class Shredder:
             )
         )
 
+        # rotate back so output corresponds to input
+        final_image = np.flip(final_image)
+
+        # reverse line labels so first line has label 1 instead of the highest label
+        final_image = np.where(final_image != 0, n_lines - final_image + 1, final_image)
+
         if self.debug:
             # Print a colored image to represent component labeling
             output_labels = np.ma.masked_where(final_image == 0, final_image)
@@ -397,6 +401,15 @@ class Shredder:
             self.im_counter += 1
 
         return final_image
+
+    def __print_debug(self, message: str):
+        """Helper function that prints a status message to the terminal.
+        Overwrites the current line, so that all messages are printed on the
+        same line.
+
+        Args: message (str): The debug message to print
+        """
+        if self.debug: print(f"\x1b[1K\r{message}", end='')
 
 
 if __name__ == "__main__":
