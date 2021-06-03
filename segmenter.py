@@ -1,9 +1,10 @@
-import numpy as np
 import os
 from enum import Enum
+
+import numpy as np
+import scipy.ndimage as nd
 from numpy.core.fromnumeric import clip
-import scipy.ndimage.measurements as nd
-from PIL import Image, ImageOps
+from PIL import Image
 
 
 class SegmentationMethod(Enum):
@@ -76,13 +77,43 @@ class Segmenter:
                 im = Image.fromarray((char * 255).astype(np.uint8))
                 im.save(
                     os.path.join(self.output_path,
-                                 f"line_{line_no}_char{char_i}.png"))
+                                 f"l{line_no}_c{char_i}.png"))
 
         pass
 
     def __segment_cc(self, line_no: int, line: np.ndarray):
         """Character segmentation by connected components
         """
+        
+        # flip line horizontally so first char is on the right
+        line = np.fliplr(line)
+
+        # dilate vertically in order to connect broken lines
+        d_struct = np.tile([False, True, False], [3, 1])
+        dilated_line = nd.binary_dilation(line, d_struct, iterations=5)
+
+        # detect connected components
+        labeled_chars, num_chars = nd.label(dilated_line)
+
+        for char_i in range(1, num_chars + 1):
+            # select the current character
+            char = np.where(labeled_chars == char_i, 1, 0)
+            # "undo" vertical binary dilation
+            char = nd.binary_erosion(char, d_struct, iterations=5)
+            # if width or height is very small, discard character
+            if np.count_nonzero(char) < 20:
+                continue
+            # remove unnecessary zeroes
+            char = self.__crop(char)
+            # flip the character back around
+            char = np.fliplr(char)
+
+            if self.debug:
+                im = Image.fromarray((char * 255).astype(np.uint8))
+                im.save(
+                    os.path.join(self.output_path,
+                                 f"l{line_no}_c{char_i}.png"))
+
         pass
 
     def __crop(self, im: np.ndarray) -> np.ndarray:
