@@ -1,7 +1,7 @@
 import os
 import pickle
 from os import listdir
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import PIL
 import matplotlib.pyplot as plt
@@ -10,44 +10,26 @@ import numpy as np
 import seaborn as sn
 import tensorflow as tf
 from PIL import Image
+from matplotlib.axes import Axes
 from sklearn.metrics import confusion_matrix
 from tensorflow.keras import layers
 from tensorflow.keras.layers.experimental import preprocessing
+from tensorflow.python.keras.callbacks import History
 
-BATCH_SIZE = 64
-SHUFFLE_BUFFER_SIZE = 256
+BATCH_SIZE: int = 64
+SHUFFLE_BUFFER_SIZE: int = 256
 """
 Note that changing the number of folds also requires (re)creating the dataset to support it. 
 """
-N_FOLDS = 5
-DATA_AUGMENTATION_DATASET = False
-DATA_AUGMENTATION_LAYERS = True
-EPOCHS = 64
+N_FOLDS: int = 5
+DATA_AUGMENTATION_DATASET: bool = True
+DATA_AUGMENTATION_LAYERS: bool = True
+EPOCHS: int = 64
 
-"""
-While the true max image width found in the data is 196 pixels, there are only 16 images that exceed 68 pixels in width.
+IMG_WIDTH: int = 64
+IMG_HEIGHT: int = 64
 
-These 16 images come from the following classes:
-- 1 Ayin
-- 2 Bet
-- 5 Gimel
-- 1 He
-- 2 Het
-- 1 Nun-medial
-- 1 Samekh
-- 3 Taw
-
-All of these classes have 300 examples, so the loss of information is minimal and arguably not worth the massive 
-performance hit incurred when zero-padding all files to ~5.3 times the median width (37 px) for all 5537 files 
-(excluding data augmentation).
-
-The value of 68 was chosen because it removes the worst outliers without removing any images from the more sparsely 
-populated classes.
-"""
-MAX_IMG_WIDTH = 68
-MAX_IMG_HEIGHT = 77
-
-ENABLE_GPU = True
+ENABLE_GPU: bool = True
 if ENABLE_GPU:
     physical_devices = tf.config.list_physical_devices("GPU")
     tf.config.experimental.set_memory_growth(physical_devices[0], True)
@@ -55,7 +37,7 @@ else:
     os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
 
 
-def load_images_from_directory(data_dir: str) -> np.array:
+def load_images_from_directory(data_dir: str) -> np.ndarray:
     """
     Loads all images from a given directory.
 
@@ -70,25 +52,27 @@ def load_images_from_directory(data_dir: str) -> np.array:
     :return: A 4d Numpy array of the shape (num_images, MAX_IMG_HEIGHT, MAX_IMG_WIDTH, 3).
     """
     _, _, filenames = next(os.walk(data_dir))
-    data = np.zeros((len(filenames), MAX_IMG_HEIGHT, MAX_IMG_WIDTH, 3), dtype=np.uint8)
+    data: np.ndarray = np.zeros((len(filenames), IMG_HEIGHT, IMG_WIDTH, 3), dtype=np.uint8)
 
-    skipped = 0
+    skipped: int = 0
     for idx, file in enumerate(filenames):
-        image: PIL.Image.Image = Image.open(data_dir + "/" + file)
+        image: Image = Image.open(data_dir + "/" + file)
 
-        if image.width > MAX_IMG_WIDTH:
+        image: Image = image.resize((IMG_WIDTH, IMG_HEIGHT))
+
+        if image.width > IMG_WIDTH or image.height > IMG_HEIGHT:
             print("Skipping image {} because its width of {} exceeds the maximum width of {}"
-                  .format(data_dir + "/" + file, image.width, MAX_IMG_WIDTH))
+                  .format(data_dir + "/" + file, image.width, IMG_WIDTH))
             skipped += 1
             continue
 
         # Non-binary images will have a tuple for the image colors instead of an integer value.
         # So, when we encounter this, we binarize the image first.
         if type(image.getcolors()[0][1]) != int:
-            image = image.convert('1')
+            image: Image = image.convert('1')
 
         # noinspection PyTypeChecker
-        image_np = np.asarray(image, dtype=np.uint8)
+        image_np: np.ndarray = np.asarray(image, dtype=np.uint8)
 
         # Invert and map all values to [0 255]. Some images are mapped to [0 1].
         # These are expanded to [0 255] so all images are the same.
@@ -99,20 +83,20 @@ def load_images_from_directory(data_dir: str) -> np.array:
         else:
             def scale_fun(x):
                 return 255 if x == 0 else 0
-        image_np = np.vectorize(scale_fun)(image_np)
+        image_np: np.ndarray = np.vectorize(scale_fun)(image_np)
 
         # Create a new, 4th dimension with 3 values (RGB).
         # While the current image
-        image_np = np.repeat(image_np[..., np.newaxis], 3, -1)
-        image_np = image_np.astype(dtype=np.uint8)
+        image_np: np.ndarray = np.repeat(image_np[..., np.newaxis], 3, -1)
+        image_np: np.ndarray = image_np.astype(dtype=np.uint8)
 
-        real_idx = idx - skipped
-        image_shape = image_np.shape
+        real_idx: int = idx - skipped
+        image_shape: Tuple[int, int] = image_np.shape
         # Use height + width offset of half the difference between the max and current height/width.
         # This will cause the glyph to be centered in the 0-padding, which reduces data loss when using
         # certain data augmentation methods (e.g. rotation/zoom).
-        off_h = int((MAX_IMG_HEIGHT - image_shape[0]) / 2)
-        off_w = int((MAX_IMG_WIDTH - image_shape[1]) / 2)
+        off_h: int = int((IMG_HEIGHT - image_shape[0]) / 2)
+        off_w: int = int((IMG_WIDTH - image_shape[1]) / 2)
         data[real_idx, off_h:image_shape[0] + off_h, off_w:image_shape[1] + off_w, 0:image_shape[2]] = image_np
 
         # Uncomment these two lines to export the images to PNG RGB images. Make sure the output directory exists!
@@ -120,12 +104,12 @@ def load_images_from_directory(data_dir: str) -> np.array:
         # rewritten.save("rewritten_images/" + file + ".png")
 
     if skipped > 0:
-        data = data[0:-skipped, :, :, :]
+        data: np.ndarray = data[0:-skipped, :, :, :]
 
     return data
 
 
-def get_data(data_dir: str, labels: List[str]) -> [np.array, np.array]:
+def get_data(data_dir: str, labels: List[str]) -> [np.ndarray, np.ndarray]:
     """
     Gets the data from a directory. If it exists, the pickled file will be loaded.
 
@@ -136,7 +120,7 @@ def get_data(data_dir: str, labels: List[str]) -> [np.array, np.array]:
     :param labels: The list of labels in the dataset.
     :return: Two Numpy arrays containing the data/features/examples and the corresponding labels, respectively.
     """
-    pickled_file = data_dir + ".pckl"
+    pickled_file: str = data_dir + ".pckl"
 
     if os.path.isfile(pickled_file):
         file = open(pickled_file, 'rb')
@@ -144,16 +128,16 @@ def get_data(data_dir: str, labels: List[str]) -> [np.array, np.array]:
         file.close()
         return data, data_labels
 
-    data_labels: np.array = np.zeros(0)
-    data: Optional[np.array] = None
+    data_labels: np.ndarray = np.zeros(0)
+    data: Optional[np.ndarray] = None
     for idx, label in enumerate(labels):
-        label_data = load_images_from_directory(data_dir + "/" + label)
+        label_data: np.ndarray = load_images_from_directory(data_dir + "/" + label)
         if data is None:
             data = label_data
         else:
             data = numpy.concatenate((data, label_data), axis=0)
 
-        data_labels = numpy.concatenate((data_labels, np.full(label_data.shape[0], idx)))
+        data_labels: np.ndarray = numpy.concatenate((data_labels, np.full(label_data.shape[0], idx)))
 
     file = open(pickled_file, 'wb')
     pickle.dump((data, data_labels), file)
@@ -162,7 +146,7 @@ def get_data(data_dir: str, labels: List[str]) -> [np.array, np.array]:
     return data, data_labels
 
 
-def create_dataset(examples: np.array, labels: np.array, shuffle: bool = False) -> tf.data.Dataset:
+def create_dataset(examples: np.ndarray, labels: np.ndarray, shuffle: bool = False) -> tf.data.Dataset:
     """
     Creates a Tensorflow dataset from two Numpy arrays.
 
@@ -176,7 +160,7 @@ def create_dataset(examples: np.array, labels: np.array, shuffle: bool = False) 
     assert examples.shape[0] == labels.shape[0]
     assert len(examples.shape) == 4
 
-    dataset = tf.data.Dataset.from_tensor_slices((examples, labels))
+    dataset: tf.data.Dataset = tf.data.Dataset.from_tensor_slices((examples, labels))
     if shuffle:
         dataset = dataset.shuffle(SHUFFLE_BUFFER_SIZE)
     dataset = dataset.batch(BATCH_SIZE)
@@ -194,10 +178,10 @@ def get_kfold_data(data_dir: str, fold: int, labels: List[str]) -> [tf.data.Data
     :param labels: The labels to predict.
     :return: The train, test, and validation datasets.
     """
-    fold_validate = (fold + 1) % N_FOLDS
+    fold_validate: float = (fold + 1) % N_FOLDS
 
-    train: np.array = np.zeros((0, MAX_IMG_HEIGHT, MAX_IMG_WIDTH, 3))
-    train_labels: np.array = np.zeros(0, dtype=int)
+    train: np.ndarray = np.zeros((0, IMG_HEIGHT, IMG_WIDTH, 3))
+    train_labels: np.ndarray = np.zeros(0, dtype=int)
 
     for idx in range(N_FOLDS):
         if idx != fold and idx != fold_validate:
@@ -213,9 +197,9 @@ def get_kfold_data(data_dir: str, fold: int, labels: List[str]) -> [tf.data.Data
 
     print("Dataset sizes: Train: {}, Test: {}, Validate: {}".format(len(train), len(test), len(validate)))
 
-    test_ds = create_dataset(test, test_labels)
-    train_ds = create_dataset(train, train_labels, shuffle=True)
-    validate_ds = create_dataset(validate, validate_labels, shuffle=True)
+    test_ds: tf.data.Dataset = create_dataset(test, test_labels)
+    train_ds: tf.data.Dataset = create_dataset(train, train_labels, shuffle=True)
+    validate_ds: tf.data.Dataset = create_dataset(validate, validate_labels, shuffle=True)
 
     print("Created datasets!")
 
@@ -229,29 +213,29 @@ def get_labels(data_dir: str) -> List[str]:
     :param data_dir: The directory to search in. This is assumed to be the top-level directory which holds all the partial sets.
     :return: The list of labels.
     """
-    search_dir = data_dir + "/0"
+    search_dir: str = data_dir + "/0"
     return [folder for folder in listdir(search_dir) if os.path.isdir(search_dir + "/" + folder)]
 
 
-def get_model(labels) -> tf.keras.models.Model:
+def get_model(labels: List[str]) -> tf.keras.Sequential:
     """
     Constructs a new model.
 
     :param labels: The labels to classify.
     :return: The newly-created model.
     """
-    input_shape = (MAX_IMG_HEIGHT, MAX_IMG_WIDTH, 3)
+    input_shape: Tuple[int, int, int] = (IMG_HEIGHT, IMG_WIDTH, 3)
 
     print("Input shape: {}".format(input_shape))
 
-    model = tf.keras.Sequential()
+    model: tf.keras.Sequential = tf.keras.Sequential()
     model.add(layers.Input(shape=input_shape))
     model.add(preprocessing.Rescaling(1. / 255))
     if DATA_AUGMENTATION_LAYERS:
         model.add(preprocessing.RandomRotation(factor=(1 / 36)))  # +/-  1/36 * 2pi rad (10 deg)
         model.add(preprocessing.RandomZoom(height_factor=0.2))
 
-    model.add(tf.keras.applications.DenseNet121(input_shape=input_shape, include_top=False, pooling="avg"))
+    model.add(tf.keras.applications.DenseNet121(input_shape=input_shape, include_top=False, pooling="max"))
 
     model.add(layers.Dropout(0.2))
     model.add(layers.Dense(128, activation="tanh")),
@@ -286,30 +270,30 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
         # This one's exception is completely useless.
         print("Failed to print the model summary!")
 
-    history = model.fit(train,
-                        verbose=1,
-                        validation_data=validate,
-                        epochs=EPOCHS,
-                        batch_size=BATCH_SIZE,
-                        )
+    history: History = model.fit(train,
+                                 verbose=1,
+                                 validation_data=validate,
+                                 epochs=EPOCHS,
+                                 batch_size=BATCH_SIZE,
+                                 )
 
-    y_true = np.zeros(0)
+    y_true: np.ndarray = np.zeros(0)
     for _, label in test:
         y_true = np.concatenate((y_true, label.numpy()))
 
-    y_pred = np.argmax(model.predict(test), axis=1)
-    test_acc = sum(y_pred == y_true) / len(y_true)
+    y_pred: np.ndarray = np.argmax(model.predict(test), axis=1)
+    test_acc: float = sum(y_pred == y_true) / len(y_true)
     print(f'Test set accuracy: {test_acc:.0%}')
 
-    acc = history.history["accuracy"]
-    val_acc = history.history["val_accuracy"]
+    acc: List[float] = history.history["accuracy"]
+    val_acc: List[float] = history.history["val_accuracy"]
 
-    loss = history.history["loss"]
-    val_loss = history.history["val_loss"]
+    loss: List[float] = history.history["loss"]
+    val_loss: List[float] = history.history["val_loss"]
 
     #
 
-    ax = sn.heatmap(confusion_matrix(y_true, y_pred), annot=False, xticklabels=labels, yticklabels=labels)
+    ax: Axes = sn.heatmap(confusion_matrix(y_true, y_pred), annot=False, xticklabels=labels, yticklabels=labels)
 
     # Use our own x/y ticks on full integers. The default x/y ticks go on halves, meaning that the grid would
     # go through the center of each square in the heatmap, which is just confusing.
@@ -333,7 +317,7 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
 
     #
 
-    epochs_range = range(len(acc))
+    epochs_range: range = range(len(acc))
 
     plt.figure(figsize=(9, 9))
     plt.suptitle("Test Accuracy: {}".format(test_acc))
@@ -362,12 +346,13 @@ def run_experiment(data_dir: str):
 
     :param data_dir: The directory containing the dataset to use.
     """
-    labels = get_labels(data_dir)
-    outputs = []
+    labels: List[str] = get_labels(data_dir)
+    outputs: List[float] = []
     for fold in range(N_FOLDS):
         train, test, val = get_kfold_data(data_dir, fold, labels)
-        model = get_model(labels)
+        model: tf.keras.Sequential = get_model(labels)
         outputs.append(run_model(model, train, test, val, labels))
+        break
 
     print(f'Average test accuracy: {sum(outputs) / len(outputs):.0%}')
     print("Individual test accuracies: {}".format(outputs))
