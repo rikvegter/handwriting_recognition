@@ -9,7 +9,7 @@ def main(args):
         n_lines, labeled_lines = shredder.shred()
 
         segmenter = Segmenter(n_lines, labeled_lines, args.debug, args.output_path)
-        segmenter.segment(SegmentationMethod.CONNECTED_COMPONENTS)
+        segmenter.segment(SegmentationMethod.THINNING)
     else:
         print("Please provide an input image.")
         parser.print_help()

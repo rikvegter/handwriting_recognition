@@ -1,3 +1,4 @@
+import ctypes
 import os
 from enum import Enum
 
@@ -5,11 +6,13 @@ import numpy as np
 import scipy.ndimage as nd
 from numpy.core.fromnumeric import clip
 from PIL import Image
+from scipy import LowLevelCallable
 
 
 class SegmentationMethod(Enum):
     PROJECTION_PROFILE = 1,
-    CONNECTED_COMPONENTS = 2
+    CONNECTED_COMPONENTS = 2,
+    THINNING = 3
 
 
 class Segmenter:
@@ -24,6 +27,7 @@ class Segmenter:
         self.output_path = os.path.join(output_path, "characters/")
         self.labeled_lines = labeled_lines
         self.n_lines = n_lines
+
         if debug:
             os.makedirs(self.output_path, exist_ok=True)
 
@@ -36,6 +40,8 @@ class Segmenter:
                 self.__segment_pp(line_no, line)
             elif method == SegmentationMethod.CONNECTED_COMPONENTS:
                 self.__segment_cc(line_no, line)
+            elif method == SegmentationMethod.THINNING:
+                self.__thin(line_no, line)
 
     def __segment_pp(self, line_no: int, line: np.ndarray):
         """Character segmentation by projection profiles
@@ -84,7 +90,7 @@ class Segmenter:
     def __segment_cc(self, line_no: int, line: np.ndarray):
         """Character segmentation by connected components
         """
-        
+
         # flip line horizontally so first char is on the right
         line = np.fliplr(line)
 
@@ -115,6 +121,54 @@ class Segmenter:
                                  f"l{line_no}_c{char_i}.png"))
 
         pass
+
+    def __thin(self, line_no: int, line: np.ndarray):
+        """Skeletonization based on Zhang & Suen (1984), doi: 10/c93zqs 
+
+        Method inspired by
+        https://rosettacode.org/wiki/Zhang-Suen_thinning_algorithm
+
+        Note: currently applied per line, but could be (a bit) faster when
+        applied on the entire image first. This could basically be done with
+        something like
+
+        >>> lines # labeled lines 
+        >>> binary_lines = np.where(lines, 1, 0) 
+        >>> thinned = self.__thin(binary_lines) 
+        >>> thinned_lines = thinned * lines
+        """
+
+        # define c libs for ndimage general filter
+        clib = ctypes.cdll.LoadLibrary("./thinning.so")
+
+        # step one of the algorithm
+        clib.StepOne.argtypes = (ctypes.POINTER(
+            ctypes.c_double), ctypes.c_long, ctypes.POINTER(ctypes.c_double),
+                                 ctypes.c_void_p)
+        step_one = LowLevelCallable(clib.StepOne)
+
+        # step 2 of the algorithm
+        clib.StepTwo.argtypes = (ctypes.POINTER(
+            ctypes.c_double), ctypes.c_long, ctypes.POINTER(ctypes.c_double),
+                                 ctypes.c_void_p)
+        step_two = LowLevelCallable(clib.StepTwo)
+
+        # If any pixels were set in this round of either step 1 or step 2 then
+        # all steps are repeated until no image pixels are changed anymore.
+        hasChanged = True
+        current = line
+        while (hasChanged):
+            s1 = nd.generic_filter(current, step_one, size=(3,3))
+            s2 = nd.generic_filter(s1, step_two, size=(3,3))
+
+            hasChanged = not np.array_equal(s2, current)
+            current = s2
+
+        if self.debug:
+            im = Image.fromarray((current * 255).astype(np.uint8))
+            im.save(os.path.join(self.output_path, f"l{line_no}_skeleton.png"))
+
+        return current
 
     def __crop(self, im: np.ndarray) -> np.ndarray:
         """Crop non-zero regions from a numpy array. Basically the inverse of
