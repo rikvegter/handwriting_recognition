@@ -138,6 +138,10 @@ class Segmenter:
         >>> thinned_lines = thinned * lines
         """
 
+        if self.debug:
+            im = Image.fromarray((line * 255).astype(np.uint8))
+            im.save(os.path.join(self.output_path, f"l{line_no}_before_thinning.png"))
+
         # define c libs for ndimage general filter
         clib = ctypes.cdll.LoadLibrary("./thinning.so")
 
@@ -157,12 +161,15 @@ class Segmenter:
         # all steps are repeated until no image pixels are changed anymore.
         hasChanged = True
         current = line
-        while (hasChanged):
-            s1 = nd.generic_filter(current, step_one, size=(3,3))
-            s2 = nd.generic_filter(s1, step_two, size=(3,3))
+        iterations = 0
+        max_iterations = 20
+        while (hasChanged and iterations < max_iterations):
+            s1 = nd.generic_filter(current, step_one, size=(3,3), mode="constant", cval=0)
+            s2 = nd.generic_filter(s1,      step_two, size=(3,3), mode="constant", cval=0)
 
             hasChanged = not np.array_equal(s2, current)
             current = s2
+            iterations += 1
 
         if self.debug:
             im = Image.fromarray((current * 255).astype(np.uint8))
@@ -185,3 +192,68 @@ class Segmenter:
         br = nonzeroes.max(axis=0)
 
         return im[tl[0]:br[0] + 1, tl[1]:br[1] + 1]
+
+
+# ---- Testing code below ----
+
+# image saying RC, to be thinned
+rc_image = np.array(
+    [ [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    , [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]
+    , [0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]
+    , [0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0]
+    , [0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    , [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    , [0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0]
+    , [0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0]
+    , [0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0]
+    , [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ]
+)
+
+# roundish shape for testing
+ci_image = np.array(
+    [ [0, 0, 0, 0, 0, 0 ,0, 0, 0, 0, 0]
+    , [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+    , [0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0]
+    , [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0]
+    , [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0]
+    , [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0]
+    , [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0]
+    , [0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0]
+    , [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+    , [0, 0, 0, 0, 0, 0 ,0, 0, 0, 0, 0]
+    ]
+)
+
+# H
+h_image = np.array(
+    [ [1, 1, 1, 0, 0, 0 ,0, 0, 1, 1, 1]
+    , [1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1]
+    , [1, 1, 1, 0, 0, 0 ,0, 0, 1, 1, 1]
+    , [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    , [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    , [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    , [1, 1, 1, 0, 0, 0 ,0, 0, 1, 1, 1]
+    , [1, 1, 1, 0, 0, 0 ,0, 0, 1, 1, 1]
+    , [1, 1, 1, 0, 0, 0 ,0, 0, 1, 1, 1]
+    , [1, 1, 1, 0, 0, 0 ,0, 0, 1, 1, 1]
+    ]
+)
+
+mini_image = np.array(
+    [ [1, 1]
+    , [1, 1]
+    ]
+)
+
+def main():
+    test_segmenter1 = Segmenter(1, rc_image, True)
+    test_segmenter1.segment(SegmentationMethod.THINNING)
+
+    # test_segmenter2 = Segmenter(1, ci_image, True)
+    # test_segmenter2.segment(SegmentationMethod.THINNING)
+    pass
+
+if __name__ == "__main__":
+    main()
