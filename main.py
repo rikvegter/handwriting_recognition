@@ -1,8 +1,9 @@
 import os
 from dataclasses import dataclass
+
 from simple_parsing import ArgumentParser, field
 from simple_parsing.helpers.fields import flag
-
+from segmentation.options import SegmentationOptions
 
 def main():
     pass
@@ -26,7 +27,12 @@ class General:
 if __name__ == "__main__":
     # CLI argument parsing
     parser = ArgumentParser()
+
+    # Add general options
     parser.add_arguments(General, dest="general_options")
+
+    # Add segmentation options
+    parser.add_arguments(SegmentationOptions, dest="segmentation_options")
 
     args = parser.parse_args()
 
