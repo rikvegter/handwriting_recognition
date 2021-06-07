@@ -8,8 +8,8 @@ from segmentation.options import SegmentationOptions
 
 
 def main(args):
-    general_options: GeneralOptions = args.general_options
-    segment_options: SegmentationOptions = args.segmentation_options
+    general_options: GeneralOptions = args.general
+    segment_options: SegmentationOptions = args.segmentation
 
     if general_options.input_path:
         # Segment lines
@@ -26,7 +26,7 @@ def main(args):
             n_lines=n_lines,
             labeled_lines=labeled_lines
         )
-        segmenter.segment(CharacterSegmentationMethod.CONNECTED_COMPONENTS)
+        segmenter.segment()
 
         # Classify characters
         # TODO
@@ -45,10 +45,10 @@ if __name__ == "__main__":
     parser = ArgumentParser()
 
     # Add general options
-    parser.add_arguments(GeneralOptions, dest="general_options")
+    parser.add_arguments(GeneralOptions, dest="general")
 
     # Add segmentation options
-    parser.add_arguments(SegmentationOptions, dest="segmentation_options")
+    parser.add_arguments(SegmentationOptions, dest="segmentation")
 
     args = parser.parse_args()
 

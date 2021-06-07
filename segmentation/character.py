@@ -1,6 +1,5 @@
 import ctypes
 import os
-from enum import Enum
 
 import numpy as np
 import scipy.ndimage as nd
@@ -11,14 +10,9 @@ from scipy import LowLevelCallable
 # General options (parent directory)
 from options import GeneralOptions
 
+from .character_segmentation_method import CharacterSegmentationMethod
 # Segmentation options (this directory)
 from .options import CharacterSegmentationOptions, SegmentationOptions
-
-
-class CharacterSegmentationMethod(Enum):
-    PROJECTION_PROFILE = 1,
-    CONNECTED_COMPONENTS = 2,
-    THINNING = 3
 
 
 class CharacterSegmenter:
@@ -33,11 +27,12 @@ class CharacterSegmenter:
         self.output_path = os.path.join(general_options.output_path, "characters/")
         self.labeled_lines = labeled_lines
         self.n_lines = n_lines
+        self.method = segment_options.method
 
         if general_options.debug:
             os.makedirs(self.output_path, exist_ok=True)
 
-    def segment(self, method: CharacterSegmentationMethod):
+    def segment(self):
 
         #TODO: Make methods return ragged arrays based on this:
         #      https://tonysyu.github.io/ragged-arrays.html
@@ -50,11 +45,11 @@ class CharacterSegmenter:
                 im = Image.fromarray((line * 255).astype(np.uint8))
                 im.save(os.path.join(self.output_path, f"l{line_no}.png"))
 
-            if method == CharacterSegmentationMethod.PROJECTION_PROFILE:
+            if self.method == CharacterSegmentationMethod.PROJECTION_PROFILE:
                 self.__segment_pp(line_no, line)
-            elif method == CharacterSegmentationMethod.CONNECTED_COMPONENTS:
+            elif self.method == CharacterSegmentationMethod.CONNECTED_COMPONENTS:
                 self.__segment_cc(line_no, line)
-            elif method == CharacterSegmentationMethod.THINNING:
+            elif self.method == CharacterSegmentationMethod.THINNING:
                 self.__thin(line_no, line)
 
     def __segment_pp(self, line_no: int, line: np.ndarray):
@@ -307,7 +302,7 @@ def main():
         n_lines=1, 
         labeled_lines=rc_image, 
     )
-    test_segmenter1.segment(CharacterSegmentationMethod.THINNING)
+    test_segmenter1.segment()
 
     pass
 
