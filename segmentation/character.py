@@ -8,30 +8,36 @@ from numpy.core.fromnumeric import clip
 from PIL import Image
 from scipy import LowLevelCallable
 
+# General options (parent directory)
+from options import GeneralOptions
 
-class SegmentationMethod(Enum):
+# Segmentation options (this directory)
+from .options import CharacterSegmentationOptions, SegmentationOptions
+
+
+class CharacterSegmentationMethod(Enum):
     PROJECTION_PROFILE = 1,
     CONNECTED_COMPONENTS = 2,
     THINNING = 3
 
 
-class Segmenter:
+class CharacterSegmenter:
     """Character segmentation.
     """
     def __init__(self,
+                 general_options: GeneralOptions,
+                 segment_options: CharacterSegmentationOptions,
                  n_lines: int,
-                 labeled_lines: np.ndarray,
-                 debug: bool = False,
-                 output_path: str = "./") -> None:
-        self.debug = debug
-        self.output_path = os.path.join(output_path, "characters/")
+                 labeled_lines: np.ndarray) -> None:
+        self.debug = general_options.debug
+        self.output_path = os.path.join(general_options.output_path, "characters/")
         self.labeled_lines = labeled_lines
         self.n_lines = n_lines
 
-        if debug:
+        if general_options.debug:
             os.makedirs(self.output_path, exist_ok=True)
 
-    def segment(self, method: SegmentationMethod):
+    def segment(self, method: CharacterSegmentationMethod):
 
         #TODO: Make methods return ragged arrays based on this:
         #      https://tonysyu.github.io/ragged-arrays.html
@@ -44,11 +50,11 @@ class Segmenter:
                 im = Image.fromarray((line * 255).astype(np.uint8))
                 im.save(os.path.join(self.output_path, f"l{line_no}.png"))
 
-            if method == SegmentationMethod.PROJECTION_PROFILE:
+            if method == CharacterSegmentationMethod.PROJECTION_PROFILE:
                 self.__segment_pp(line_no, line)
-            elif method == SegmentationMethod.CONNECTED_COMPONENTS:
+            elif method == CharacterSegmentationMethod.CONNECTED_COMPONENTS:
                 self.__segment_cc(line_no, line)
-            elif method == SegmentationMethod.THINNING:
+            elif method == CharacterSegmentationMethod.THINNING:
                 self.__thin(line_no, line)
 
     def __segment_pp(self, line_no: int, line: np.ndarray):
@@ -288,11 +294,21 @@ mini_image = np.array([[1, 1], [1, 1]])
 
 
 def main():
-    test_segmenter1 = Segmenter(1, rc_image, True)
-    test_segmenter1.segment(SegmentationMethod.THINNING)
+    test_gen_options = GeneralOptions(
+        output_path="./output/",
+        debug=True
+    )
 
-    # test_segmenter2 = Segmenter(1, ci_image, True)
-    # test_segmenter2.segment(SegmentationMethod.THINNING)
+    test_seg_options = CharacterSegmentationOptions()
+
+    test_segmenter1 = CharacterSegmenter(
+        test_gen_options,
+        test_seg_options,
+        n_lines=1, 
+        labeled_lines=rc_image, 
+    )
+    test_segmenter1.segment(CharacterSegmentationMethod.THINNING)
+
     pass
 
 

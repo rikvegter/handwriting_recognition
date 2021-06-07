@@ -1,22 +1,26 @@
 import argparse
 import os
 from typing import Tuple
-from PIL import Image, ImageOps
-import numpy as np
-from numpy.core.fromnumeric import ndim, trace
-from numpy.lib.arraysetops import unique
-from scipy import ndimage
-from scipy.spatial.distance import cdist
-import matplotlib.pyplot as plt
 
-class Shredder:
+import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image, ImageOps
+from scipy import ndimage
+
+# General options (parent directory)
+from options import GeneralOptions
+
+# Segmentation options (this directory)
+from .options import LineSegmentationOptions
+
+
+class LineSegmenter:
     """Implementation of "Handwritten Text Line Segmentation by Shredding Text
     into its Lines" by Anguelos Nicolaou and Basilis Gatos (2009; doi:10/b5wsx6)
     """
     def __init__(self,
-                 image_path: str,
-                 debug: bool = False,
-                 output_path: str = "./") -> None:
+                 general_options: GeneralOptions,
+                 segment_options: LineSegmentationOptions) -> None:
         """Initialize the line shredder
 
         Args: image_path (str): the path of the image to segment lines of debug
@@ -25,15 +29,15 @@ class Shredder:
             to "./".
         """
         # Set debug settings
-        self.debug = debug
+        self.debug = general_options.debug
         self.__print_debug("Setting up...")
-        self.output_path = output_path
+        self.output_path = general_options.output_path
         self.im_counter = 0  # for labeling image order
-        if debug:
+        if self.debug:
             os.makedirs(self.output_path, exist_ok=True)
 
         # Open the image, convert it to a numpy array and make sure it is binary
-        self.image = self.__prepare_image(image_path)
+        self.image = self.__prepare_image(general_options.input_path)
 
         # 2.1 Preprocessing
 
@@ -77,7 +81,8 @@ class Shredder:
 
         # 2.3.1 Assigning to line centers
         self.__print_debug("Separating lines, pass 1...")
-        result_line_centers = self.__separate_lines(n_lines, labeled_line_centers)
+        result_line_centers = self.__separate_lines(n_lines,
+                                                    labeled_line_centers)
 
         # 2.3.2 Assigning to line areas
         self.__print_debug("Separating lines, pass 2...")
@@ -88,7 +93,8 @@ class Shredder:
         intermediate_result = result_line_areas + result_line_centers
 
         # 2.3.3 Assigning remaining pixels
-        result_final = self.__assign_remaining(n_lines, intermediate_result, labeled_line_areas)
+        result_final = self.__assign_remaining(n_lines, intermediate_result,
+                                               labeled_line_areas)
 
         return n_lines, result_final
 
@@ -340,7 +346,9 @@ class Shredder:
             res = np.where(np.isin(self.components, unique_components), label,
                            res)
             # Remove from original set of labeled components LIN(x, y)
-            self.components = np.where(np.isin(self.components, unique_components), 0, self.components)
+            self.components = np.where(
+                np.isin(self.components, unique_components), 0,
+                self.components)
 
         if self.debug:
             # Print a colored image to represent component labeling
@@ -357,7 +365,8 @@ class Shredder:
 
         return res
 
-    def __assign_remaining(self, n_lines: int, intermediate_result: np.ndarray, labeled_line_areas: np.ndarray):
+    def __assign_remaining(self, n_lines: int, intermediate_result: np.ndarray,
+                           labeled_line_areas: np.ndarray):
         """After steps 2.3.1 and 2.3.2, there might be some unlabeled
         components. This step takes care of them.
 
@@ -368,24 +377,25 @@ class Shredder:
         # We take labeled_line_areas iff LIN(x, y) != AND RES(x, y) == 0.
         # | RES(x, y)   if    LIN(x, y) == 0  OR  RES(x, y) != 0
         # | LLA(x, y)   otherwise
-        # The way the paper writes this is a bit convoluted but is equal to the 
+        # The way the paper writes this is a bit convoluted but is equal to the
         # above.
-        final_image = np.where(self.components == 0,
+        final_image = np.where(
+            self.components == 0,
             # LIN(x, y) == 0; RES(x, y) = whatever
             intermediate_result,
-            np.where(intermediate_result == 0,
+            np.where(
+                intermediate_result == 0,
                 # LIN(x, y) != 0; RES(x, y) == 0
                 labeled_line_areas,
                 # LIN(x, y) != 0; RES(x, y) != 0
-                intermediate_result
-            )
-        )
+                intermediate_result))
 
         # rotate back so output corresponds to input
         final_image = np.flip(final_image)
 
         # reverse line labels so first line has label 1 instead of the highest label
-        final_image = np.where(final_image != 0, n_lines - final_image + 1, final_image)
+        final_image = np.where(final_image != 0, n_lines - final_image + 1,
+                               final_image)
 
         if self.debug:
             # Print a colored image to represent component labeling
@@ -395,9 +405,8 @@ class Shredder:
             colored_image = cm(output_labels)
             Image.fromarray(
                 (colored_image[:, :, :3] * 255).astype(np.uint8)).save(
-                    os.path.join(
-                        self.output_path,
-                        f"{self.im_counter}_letter_labels_final.png"))
+                    os.path.join(self.output_path,
+                                 f"{self.im_counter}_letter_labels_final.png"))
             self.im_counter += 1
 
         return final_image
@@ -410,40 +419,3 @@ class Shredder:
         Args: message (str): The debug message to print
         """
         if self.debug: print(f"\x1b[1K\r{message}", end='')
-
-
-if __name__ == "__main__":
-
-    #TODO###################################################################################
-    #TODO: Undo rotation when processing output! (also check if it even makes a difference)#
-    #TODO###################################################################################
-
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("-i",
-                        "--image_path",
-                        type=str,
-                        help="path of the image to use")
-    parser.add_argument(
-        "-o",
-        "--output_path",
-        type=str,
-        default="./",
-        help="path to save output images to (mostly for debugging)")
-    parser.add_argument(
-        "-d",
-        "--debug",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=
-        "Save intermediary images for debugging purposes and show progress",
-    )
-    args = parser.parse_args()
-
-    if args.image_path:
-        shredder = Shredder(args.image_path, args.debug, args.output_path)
-        shredder.shred()
-    else:
-        print("Please provide an input image.")
-        parser.print_help()
-        exit()
