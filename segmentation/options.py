@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from simple_parsing import field
+from simple_parsing.helpers.fields import choice
 
 from .character_segmentation_method import CharacterSegmentationMethod
 
@@ -8,19 +9,16 @@ from .character_segmentation_method import CharacterSegmentationMethod
 class LineSegmentationOptions:
     """Parameters for line segmentation"""
 
-    option1: str = ""
+    # No options yet
+    empty: str = ""
 
 
 @dataclass
 class CharacterSegmentationOptions:
     """Parameters for character segmentation"""
 
-    # The method to use for character segmentation
-    charseg_method: CharacterSegmentationMethod = field(
-        default=CharacterSegmentationMethod.PROJECTION_PROFILE,
-        choices=list(CharacterSegmentationMethod),
-        alias="-c"
-    )
+    # No options yet
+    empty: str = ""
 
 
 @dataclass

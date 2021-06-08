@@ -1,11 +1,13 @@
 import ctypes
 import os
+from typing import Tuple
 
 import numpy as np
 import scipy.ndimage as nd
-from numpy.core.fromnumeric import clip
+import utils
 from PIL import Image
 from scipy import LowLevelCallable
+from skimage.morphology import convex_hull_image
 
 # General options (parent directory)
 from options import GeneralOptions
@@ -22,12 +24,14 @@ class CharacterSegmenter:
                  general_options: GeneralOptions,
                  segment_options: CharacterSegmentationOptions,
                  n_lines: int,
-                 labeled_lines: np.ndarray) -> None:
-        self.debug = general_options.debug
-        self.output_path = os.path.join(general_options.output_path, "characters/")
-        self.labeled_lines = labeled_lines
-        self.n_lines = n_lines
-        self.method = segment_options.method
+                 labeled_lines: np.ndarray,
+                 char_height: float) -> None:
+        
+        self.debug: bool = general_options.debug
+        self.output_path: str = os.path.join(general_options.output_path, "characters/")
+        self.labeled_lines: np.ndarray = labeled_lines
+        self.n_lines: int = n_lines
+        self.char_height: float = char_height
 
         if general_options.debug:
             os.makedirs(self.output_path, exist_ok=True)
@@ -36,21 +40,88 @@ class CharacterSegmenter:
 
         #TODO: Make methods return ragged arrays based on this:
         #      https://tonysyu.github.io/ragged-arrays.html
+        #      Alternatively, pad arrays to a given size and return that
+
+        print("Step 2: Character segmentation")
+        utils.print_info(f"Found {self.n_lines} lines.")
 
         for line_no in range(1, self.n_lines + 1):
             line = np.where(self.labeled_lines == line_no, 1,
                             0).astype(np.uint8)
 
+            # 1px erosion to get rid of some noise, followed by dilation to
+            # ‘correct’ for the erosion
+            # TODO fix this, generates weird output
+            # struct = nd.generate_binary_structure(2, 1)
+            # line = nd.binary_erosion(line, struct)
+            # line = nd.binary_dilation(line, struct)
+
+            # crop to just the line
+            line = self.__crop(line)
+
             if self.debug:
                 im = Image.fromarray((line * 255).astype(np.uint8))
-                im.save(os.path.join(self.output_path, f"l{line_no}.png"))
+                im.save(os.path.join(self.output_path, f"l{line_no:02}_before.png"))
 
-            if self.method == CharacterSegmentationMethod.PROJECTION_PROFILE:
-                self.__segment_pp(line_no, line)
-            elif self.method == CharacterSegmentationMethod.CONNECTED_COMPONENTS:
-                self.__segment_cc(line_no, line)
-            elif self.method == CharacterSegmentationMethod.THINNING:
-                self.__thin(line_no, line)
+            self.__segment(line_no, line)
+
+        utils.print_info("        Done.")
+
+
+    def __segment(self, line_no, line):
+
+        # flip line horizontally so first char is on the left
+        line = np.fliplr(line)
+
+        # deskew
+        line = self.__deskew(line)
+
+        if self.debug:
+            im = Image.fromarray((np.fliplr(line) * 255).astype(np.uint8))
+            im.save(
+                os.path.join(self.output_path,
+                                f"l{line_no:02}_deskewed.png"))
+
+        # word separation threshold determined using estimated character height
+        word_sep = int(0.1 * self.char_height)
+
+        # horizontally dilate for determining word boundaries
+        d_struct = np.tile([False, True, False], [3, 1]).T
+        dilated_line = nd.binary_dilation(line, d_struct, iterations=word_sep)
+
+        # calculate horizontal projection profile for word separation
+        projection_profile = np.sum(dilated_line, axis=0)
+
+        clipped_line = np.where(projection_profile > 0, projection_profile, 0)
+
+        # detect (1D) connected components
+        words, n_words = nd.label(clipped_line)
+
+        # loop over words
+        for word_i in range(1, n_words + 1):
+            utils.print_info(f"Processing line {line_no:02}/{self.n_lines:02}, word {word_i:02}/{n_words:02}...")
+            region_coords = np.argwhere(words == word_i)
+            min_x = np.min(region_coords)
+            max_x = np.max(region_coords)
+
+            if min_x == max_x:
+                continue
+
+            word_region = line[:, min_x:max_x]
+
+            if np.count_nonzero(word_region) < 20:
+                continue
+
+            word = np.fliplr(self.__crop(word_region))
+
+            if self.debug:
+                im = Image.fromarray((word * 255).astype(np.uint8))
+                im.save(
+                    os.path.join(self.output_path,
+                                 f"l{line_no:02}_w{word_i:02}.png"))
+
+        
+
 
     def __segment_pp(self, line_no: int, line: np.ndarray):
         """Character segmentation by projection profiles
@@ -92,7 +163,7 @@ class CharacterSegmenter:
                 im = Image.fromarray((char * 255).astype(np.uint8))
                 im.save(
                     os.path.join(self.output_path,
-                                 f"l{line_no}_c{char_i}.png"))
+                                 f"l{line_no:02}_c{char_i:03}.png"))
 
         pass
 
@@ -100,25 +171,29 @@ class CharacterSegmenter:
         """Character segmentation by connected components
         """
 
+        # Prepare for configurable dilation rate
+        dilation_rate = 3
+
         # flip line horizontally so first char is on the right
         line = np.fliplr(line)
 
         # dilate vertically in order to connect broken lines
         d_struct = np.tile([False, True, False], [3, 1])
-        dilated_line = nd.binary_dilation(line, d_struct, iterations=5)
+        dilated_line = nd.binary_dilation(line, d_struct, iterations=dilation_rate)
 
-        if self.debug:
-            im = Image.fromarray((dilated_line * 255).astype(np.uint8))
-            im.save(os.path.join(self.output_path, f"l{line_no}_dilated.png"))
-
-        # detect connected components
+        # # detect connected components
         labeled_chars, num_chars = nd.label(dilated_line)
 
         for char_i in range(1, num_chars + 1):
             # select the current character
-            char = np.where(labeled_chars == char_i, 1, 0)
-            # "undo" vertical binary dilation
-            char = nd.binary_erosion(char, d_struct, iterations=5)
+            dilated_char = np.where(labeled_chars == char_i, 1, 0)
+
+            # calculate convex hull
+            hull = convex_hull_image(dilated_char)
+
+            # use convex hull to select character from original line
+            char = line * hull
+
             # if width or height is very small, discard character
             if np.count_nonzero(char) < 20:
                 continue
@@ -131,7 +206,7 @@ class CharacterSegmenter:
                 im = Image.fromarray((char * 255).astype(np.uint8))
                 im.save(
                     os.path.join(self.output_path,
-                                 f"l{line_no}_c{char_i}.png"))
+                                 f"l{line_no:02}_c{char_i:03}.png"))
 
         pass
 
@@ -144,6 +219,8 @@ class CharacterSegmenter:
         Note: currently applied per line, but could be (a bit) faster when
         applied on the entire image first. This could basically be done with
         something like
+
+        Note 2: This doesn't work as it is supposed to.
 
         >>> lines # labeled lines 
         >>> binary_lines = np.where(lines, 1, 0) 
@@ -216,96 +293,40 @@ class CharacterSegmenter:
 
         return im[tl[0]:br[0] + 1, tl[1]:br[1] + 1]
 
+    def __deskew(self, im: np.ndarray) -> np.ndarray:
+        # try different skews, see which has the most separations, pick that and
+        # apply it
 
-# ---- Testing code below ----
+        # pad to account for shearing going outside image limits
+        h, _ = im.shape
+        im = np.pad(im, ((0,0), (h,h)))
 
-# image saying RC, to be thinned
-rc_image = np.array([[
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0
-],
-                     [
-                         0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1,
-                         1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0
-                     ],
-                     [
-                         0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1,
-                         1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0
-                     ],
-                     [
-                         0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1,
-                         1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0
-                     ],
-                     [
-                         0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1,
-                         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-                     ],
-                     [
-                         0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1,
-                         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-                     ],
-                     [
-                         0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-                         1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0
-                     ],
-                     [
-                         0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1,
-                         1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0
-                     ],
-                     [
-                         0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1,
-                         1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0
-                     ],
-                     [
-                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-                     ]])
+        max_zeroes: int = 0
+        max_zeroes_k: float = 0
 
-# roundish shape for testing
-ci_image = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                     [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                     [0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
-                     [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-                     [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-                     [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-                     [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-                     [0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
-                     [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+        # try angles between -45 and +45 degrees
+        for k in np.arange(-1, 1, 0.1):
+            # shearing array
+            transform = [[1, 0, 0],
+                         [k, 1, 0],
+                         [0, 0, 1]]
+            sheared_image = nd.affine_transform(
+                im, 
+                transform
+            )
 
-# H
-h_image = np.array([[1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1],
-                    [1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1],
-                    [1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1],
-                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                    [1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1],
-                    [1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1],
-                    [1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1],
-                    [1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1]])
-
-mini_image = np.array([[1, 1], [1, 1]])
-
-
-def main():
-    test_gen_options = GeneralOptions(
-        output_path="./output/",
-        debug=True
-    )
-
-    test_seg_options = CharacterSegmentationOptions()
-
-    test_segmenter1 = CharacterSegmenter(
-        test_gen_options,
-        test_seg_options,
-        n_lines=1, 
-        labeled_lines=rc_image, 
-    )
-    test_segmenter1.segment()
-
-    pass
-
-
-if __name__ == "__main__":
-    main()
+            # vertical projection profile
+            projprof = np.sum(sheared_image, axis=0)
+            zeroes = np.count_nonzero(projprof == 0)
+            if zeroes > max_zeroes:
+                max_zeroes = zeroes
+                max_zeroes_k = k
+            
+        # for now just use max height
+        transform = [[1,            0, 0], 
+                     [max_zeroes_k, 1, 0],
+                     [0,            0, 1]]
+        return nd.affine_transform(
+            im, 
+            transform,
+        )
