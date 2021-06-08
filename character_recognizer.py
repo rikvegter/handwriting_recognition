@@ -208,8 +208,6 @@ def get_model(labels: List[str]) -> tf.keras.Sequential:
     """
     input_shape: Tuple[int, int, int] = (IMG_HEIGHT, IMG_WIDTH, 3)
 
-    print("Input shape: {}".format(input_shape))
-
     model: tf.keras.Sequential = tf.keras.Sequential()
     model.add(layers.Input(shape=input_shape))
     model.add(preprocessing.Rescaling(1. / 255))

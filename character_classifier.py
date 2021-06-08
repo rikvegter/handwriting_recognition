@@ -46,7 +46,8 @@ class CharacterClassifier:
         return model
 
     def __classify_image(self, image: np.ndarray) -> int:
-        image_arr = np.expand_dims(image, 0)
+        assert len(image.shape) >= 2
+        image_arr = np.expand_dims(image, axis=0)
         predictions: np.ndarray = self.model.predict(image_arr)
         return np.argmax(predictions, axis=1)[0]
 
@@ -97,13 +98,23 @@ class CharacterClassifier:
         :return: An array of indices of the classified character in the #LABELS list.
         """
         if isinstance(image_data, np.ndarray):
+            if len(image_data.shape) < 3:
+                raise ValueError("Failed to process array of shape: {}. Images need at least 2 dimensions!"
+                                 .format(image_data.shape))
+            elif len(image_data.shape) > 4:
+                raise ValueError("Failed to process array of shape: {}. Images cannot have more than 3 dimensions!"
+                                 .format(image_data.shape))
+            elif len(image_data.shape) == 3 and image_data.shape[2] == 3:
+                raise ValueError("Failed to process array of shape: {}. RGB images need at least 3 dimensions!"
+                                 .format(image_data.shape))
             image_count = image_data.shape[0]
         elif isinstance(image_data, List):
             image_count = len(image_data)
         else:
             raise ValueError("Type {} cannot be processed! Only Numpy arrays and lists are allowed!"
                              .format(type(image_data)))
-
+        if image_count == 0:
+            return np.empty(0, dtype=int)
         images = self.__generate_image_holder(image_count)
         for idx in range(image_count):
             images[idx, :, :, :] = self.__prepare_image(image_data[idx])
