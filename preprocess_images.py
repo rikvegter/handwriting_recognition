@@ -1,4 +1,5 @@
 import os
+from typing import Union
 
 from PIL import Image
 import numpy as np
@@ -112,14 +113,15 @@ def scale_image(image_array: np.ndarray, height: int, width: int) -> np.ndarray:
     factor_width: float = width / image_array.shape[1]
     factor: float = min(factor_height, factor_width)
 
-    image: Image = Image.fromarray(image_array, mode="L")
+    image: Image.Image = Image.fromarray(image_array, mode="L")
 
     new_height: int = int(image_array.shape[0] * factor)
     new_width: int = int(image_array.shape[1] * factor)
 
     assert new_width <= width and new_height <= height
 
-    image: Image = image.resize((new_width, new_height))
+    image: Image.Image = image.resize((new_width, new_height))
+    # noinspection PyTypeChecker
     return np.asarray(image, dtype=np.uint8)
 
 
@@ -145,28 +147,15 @@ def preprocess_files(data_dir: str, output_height: int, output_width: int, extra
     for path, dirs, files in os.walk(data_dir):
         for file in files:
             fullname: str = os.path.join(path, file)
-            image: Image = Image.open(fullname)
-
-            # Non-binary images will have a tuple for the image colors instead of an integer value.
-            # So, when we encounter this, we binarize the image first.
-            if type(image.getcolors()[0][1]) != int:
-                image = image.convert('1')
-
+            image: Image.Image = Image.open(fullname)
+            if image.mode != "L":  # Avoid making a copy
+                image: Image.Image = image.convert(mode="L")
+            # noinspection PyTypeChecker
             image_np: np.ndarray = np.asarray(image, dtype=np.uint8)
-
-            if np.amax(image_np) > 1:
-                def scale_fun(x):
-                    return 255 if x == 254 else x
-            else:
-                def scale_fun(x):
-                    return 0 if x == 0 else 255
-            image_np: np.ndarray = np.asarray(np.vectorize(scale_fun)(image_np), dtype=np.uint8)
-
             trimmed: np.ndarray = trim_image(image_np)
             scaled: np.ndarray = scale_image(trimmed, output_height - extra_padding, output_width - extra_padding)
             padded: np.ndarray = pad_image(scaled, output_height, output_width)
-
-            preprocessed_image: Image = Image.fromarray(padded, mode="L")
+            preprocessed_image: Image.Image = Image.fromarray(padded, mode="L")
             preprocessed_image.save(fullname)
 
 

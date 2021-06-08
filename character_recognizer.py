@@ -57,32 +57,20 @@ def load_images_from_directory(data_dir: str) -> np.ndarray:
 
     skipped: int = 0
     for idx, file in enumerate(filenames):
-        image: Image = Image.open(data_dir + "/" + file)
-        image: Image = image.resize((IMG_WIDTH, IMG_HEIGHT))
-
-        # Non-binary images will have a tuple for the image colors instead of an integer value.
-        # So, when we encounter this, we binarize the image first.
-        if type(image.getcolors()[0][1]) != int:
-            image: Image = image.convert('1')
+        image: Image.Image = Image.open(data_dir + "/" + file)
+        if image.mode != "L":  # Avoid making a copy
+            image: Image.Image = image.convert(mode="L")
+        image: Image.Image = image.resize((IMG_WIDTH, IMG_HEIGHT))
 
         # noinspection PyTypeChecker
         image_np: np.ndarray = np.asarray(image, dtype=np.uint8)
 
-        # Invert and map all values to [0 255]. Some images are mapped to [0 1].
-        # These are expanded to [0 255] so all images are the same.
-        # The colors are inverted so the features have non-0 values, to avoid issues with 0-padding.
-        if np.amax(image_np) > 1:
-            def scale_fun(x):
-                return 255 - x
-        else:
-            def scale_fun(x):
-                return 255 if x == 0 else 0
-        image_np: np.ndarray = np.vectorize(scale_fun)(image_np)
-
-        # Create a new, 4th dimension with 3 values (RGB).
-        # While the current image
+        # Create a new dimension of size 3 (RGB) where each channel copies
+        # the greyscale value. Image-based stuff usually doesn't handle greyscale very well.
         image_np: np.ndarray = np.repeat(image_np[..., np.newaxis], 3, -1)
         image_np: np.ndarray = image_np.astype(dtype=np.uint8)
+        # The colors are inverted so the features have non-0 values, to avoid issues with 0-padding.
+        image_np: np.ndarray = 255 - image_np
 
         real_idx: int = idx - skipped
         image_shape: Tuple[int, int] = image_np.shape
@@ -93,7 +81,7 @@ def load_images_from_directory(data_dir: str) -> np.ndarray:
         off_w: int = int((IMG_WIDTH - image_shape[1]) / 2)
         data[real_idx, off_h:image_shape[0] + off_h, off_w:image_shape[1] + off_w, 0:image_shape[2]] = image_np
 
-        # # Uncomment these two lines to export the images to PNG RGB images. Make sure the output directory exists!
+        # # Uncomment these two lines to export the images as they will be used for the network. Make sure the output directory exists!
         # rewritten = Image.fromarray(data[real_idx, :, :, :])
         # rewritten.save("rewritten_images/" + file + ".pgm")
 
