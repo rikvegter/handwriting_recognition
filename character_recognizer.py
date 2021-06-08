@@ -3,7 +3,6 @@ import pickle
 from os import listdir
 from typing import List, Optional, Tuple
 
-import PIL
 import matplotlib.pyplot as plt
 import numpy
 import numpy as np
@@ -24,7 +23,9 @@ Note that changing the number of folds also requires (re)creating the dataset to
 N_FOLDS: int = 5
 DATA_AUGMENTATION_DATASET: bool = True
 DATA_AUGMENTATION_LAYERS: bool = True
-EPOCHS: int = 64
+EPOCHS: int = 96
+MODEL_OUTPUT_PATH = "models"
+NETWORK_APPLICATION = tf.keras.applications.DenseNet121
 
 IMG_WIDTH: int = 64
 IMG_HEIGHT: int = 64
@@ -57,14 +58,7 @@ def load_images_from_directory(data_dir: str) -> np.ndarray:
     skipped: int = 0
     for idx, file in enumerate(filenames):
         image: Image = Image.open(data_dir + "/" + file)
-
         image: Image = image.resize((IMG_WIDTH, IMG_HEIGHT))
-
-        if image.width > IMG_WIDTH or image.height > IMG_HEIGHT:
-            print("Skipping image {} because its width of {} exceeds the maximum width of {}"
-                  .format(data_dir + "/" + file, image.width, IMG_WIDTH))
-            skipped += 1
-            continue
 
         # Non-binary images will have a tuple for the image colors instead of an integer value.
         # So, when we encounter this, we binarize the image first.
@@ -99,9 +93,9 @@ def load_images_from_directory(data_dir: str) -> np.ndarray:
         off_w: int = int((IMG_WIDTH - image_shape[1]) / 2)
         data[real_idx, off_h:image_shape[0] + off_h, off_w:image_shape[1] + off_w, 0:image_shape[2]] = image_np
 
-        # Uncomment these two lines to export the images to PNG RGB images. Make sure the output directory exists!
+        # # Uncomment these two lines to export the images to PNG RGB images. Make sure the output directory exists!
         # rewritten = Image.fromarray(data[real_idx, :, :, :])
-        # rewritten.save("rewritten_images/" + file + ".png")
+        # rewritten.save("rewritten_images/" + file + ".pgm")
 
     if skipped > 0:
         data: np.ndarray = data[0:-skipped, :, :, :]
@@ -235,11 +229,9 @@ def get_model(labels: List[str]) -> tf.keras.Sequential:
         model.add(preprocessing.RandomRotation(factor=(1 / 36)))  # +/-  1/36 * 2pi rad (10 deg)
         model.add(preprocessing.RandomZoom(height_factor=0.2))
 
-    model.add(tf.keras.applications.DenseNet121(input_shape=input_shape, include_top=False, pooling="max"))
-
-    model.add(layers.Dropout(0.2))
-    model.add(layers.Dense(128, activation="tanh")),
-    model.add(layers.Dense(len(labels), activation="tanh"))
+    # Use max pooling, because the images are inverted such that ink (=255) = white, black (=0) = background.
+    model.add(NETWORK_APPLICATION(input_shape=input_shape, include_top=False, pooling="max", weights=None,
+                                  classes=len(labels)))
 
     model.compile(
         optimizer=tf.optimizers.Adam(),
@@ -251,7 +243,7 @@ def get_model(labels: List[str]) -> tf.keras.Sequential:
 
 
 def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.data.Dataset, validate: tf.data.Dataset,
-              labels: List[str]) -> float:
+              labels: List[str], model_checkpoint_path: Optional[str] = None) -> float:
     """
     Trains and tests a model.
 
@@ -260,6 +252,8 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
     :param test: The dataset containing the test data.
     :param validate: The dataset containing the validation data.
     :param labels: The list of labels.
+    :param model_checkpoint_path: The path to use for storing model checkpoints. When this value is not provided,
+    the model will not be stored.
     :return: The model's accuracy on the test dataset in [0, 1].
     """
     try:
@@ -270,12 +264,27 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
         # This one's exception is completely useless.
         print("Failed to print the model summary!")
 
+    if model_checkpoint_path is None:
+        save_model_callback = None
+    else:
+        save_model_callback = tf.keras.callbacks.ModelCheckpoint(
+            filepath=model_checkpoint_path,
+            save_best_only=True,
+            monitor="val_loss", mode="min",
+            save_weights_only=True
+        )
+
     history: History = model.fit(train,
                                  verbose=1,
                                  validation_data=validate,
                                  epochs=EPOCHS,
                                  batch_size=BATCH_SIZE,
+                                 callbacks=[save_model_callback]
                                  )
+
+    if model_checkpoint_path is not None and save_model_callback is not None:
+        print("Loading optimal weights...")
+        model.load_weights(model_checkpoint_path)
 
     y_true: np.ndarray = np.zeros(0)
     for _, label in test:
@@ -340,23 +349,30 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
     return test_acc
 
 
-def run_experiment(data_dir: str):
+def train_model(data_dir: str, model_output_path: Optional[str] = None, results_output_path: Optional[str] = None):
     """
     Runs k-fold (see N_FOLDS) cross-validation using the data from the provided input directory.
 
     :param data_dir: The directory containing the dataset to use.
+    :param model_output_path: The directory to store models in.
+    :param results_output_path: The file to store the results in. If the file already exists, it will be overwritten.
     """
     labels: List[str] = get_labels(data_dir)
     outputs: List[float] = []
     for fold in range(N_FOLDS):
         train, test, val = get_kfold_data(data_dir, fold, labels)
         model: tf.keras.Sequential = get_model(labels)
-        outputs.append(run_model(model, train, test, val, labels))
-        break
+        outputs.append(run_model(model, train, test, val, labels, "{}/model_{}/".format(model_output_path, fold)))
+        # break
 
-    print(f'Average test accuracy: {sum(outputs) / len(outputs):.0%}')
-    print("Individual test accuracies: {}".format(outputs))
+    output: str = f'Average test accuracy: {sum(outputs) / len(outputs):.0%}\nIndividual test accuracies: {outputs}'
+    print(output)
+
+    if results_output_path is not None:
+        with open(results_output_path, "w") as file:
+            file.write(output)
 
 
 if __name__ == "__main__":
-    run_experiment("dataset")
+    assert os.path.isdir(MODEL_OUTPUT_PATH)
+    train_model("dataset_preprocessed_2ximgmorph_shear_dilation_erosion", MODEL_OUTPUT_PATH, "Results")

@@ -1,7 +1,7 @@
 import os
 import random
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
 import cv2
@@ -9,11 +9,15 @@ import cv2
 INPUT_DIRECTORY: str = "dataset"
 AUGMENTED_DIRECTORY_SUFFIX: str = "_augmented"
 
-SHEAR_FACTOR: float = 0.3
-SHIFT_FACTOR: float = 0.2
+SHEAR_FACTOR: float = 0.12
+SHIFT_FACTOR: float = 0.1
+ROTATION_FACTOR: float = 15
+EROSION_KERNEL: int = 3
+DILATION_KERNEL: int = 3
 
-SHEAR_COUNT: int = 0
+SHEAR_COUNT: int = 1
 SHIFT_COUNT: int = 0
+ROTATION_COUNT: int = 0
 ENABLE_EROSION: bool = True
 ENABLE_DILATION: bool = True
 
@@ -30,7 +34,7 @@ class AugmentationMethod(ABC):
         self.save_image()
 
     def __get_indexed_output_file(self, output_file_base: str, output_file_extension: str, index: int) -> str:
-        return "{}_{}{}".format(output_file_base, index, output_file_extension)
+        return "{}_augment_{}{}".format(output_file_base, index, output_file_extension)
 
     def save_image(self):
         cv2.imwrite(self.output_file, self.image)
@@ -38,14 +42,6 @@ class AugmentationMethod(ABC):
     @abstractmethod
     def apply_augmentation(self):
         pass
-
-    def _crop_image(self):
-        new_rows: int = self.image.shape[0]
-        new_cols: int = self.image.shape[1]
-        if new_rows == self.rows and new_cols == self.cols:
-            return
-
-        self.image: np.ndarray = self.image[:self.rows, :self.cols]
 
 
 class AugmentationMethodNull(AugmentationMethod, ABC):
@@ -72,14 +68,27 @@ class AugmentationMethodShear(AugmentationMethod, ABC):
                                            [0, 0, 1]])
 
     def apply_augmentation(self):
-        size_factor: float = 1 + abs(self.shearing_factor)
-
-        new_rows: int = int(self.rows * size_factor)
-        new_cols: int = int(self.cols * size_factor)
         self.image: np.ndarray = cv2.warpPerspective(self.image, self.shearing_matrix,
-                                                     (new_rows, new_cols), borderValue=255,
+                                                     (self.rows, self.cols), borderValue=255,
                                                      borderMode=cv2.BORDER_CONSTANT)
-        self._crop_image()
+
+
+class AugmentationMethodRotation(AugmentationMethod, ABC):
+
+    def __init__(self, image: np.ndarray, output_file_base: str, output_file_extension: str, index: int,
+                 rotation_factor_range: float):
+        super().__init__(image, output_file_base, output_file_extension, index)
+        self.rotation_factor_range: float = rotation_factor_range
+        self.__create_rotation_factor()
+
+    def __create_rotation_factor(self):
+        self.rotation_angle: float = random.uniform(-self.rotation_factor_range, self.rotation_factor_range)
+        image_center: Tuple[float, float] = (self.rows / 2, self.cols / 2)
+        self.rotation_matrix: np.ndarray = cv2.getRotationMatrix2D(image_center, self.rotation_angle, 1.0)
+
+    def apply_augmentation(self):
+        self.image: np.ndarray = cv2.warpAffine(self.image, self.rotation_matrix, (self.rows, self.cols),
+                                                flags=cv2.INTER_LINEAR, borderValue=255)
 
 
 class AugmentationMethodShift(AugmentationMethod, ABC):
@@ -122,7 +131,7 @@ class AugmentationMethodShift(AugmentationMethod, ABC):
 class AugmentationMethodDilation(AugmentationMethod, ABC):
 
     def __init__(self, image: np.ndarray, output_file_base: str, output_file_extension: str, index: int,
-                 kernel_size: int = 3):
+                 kernel_size: int):
         super().__init__(image, output_file_base, output_file_extension, index)
         self.kernel: np.ndarray = np.ones((kernel_size, kernel_size), np.uint8)
 
@@ -132,7 +141,7 @@ class AugmentationMethodDilation(AugmentationMethod, ABC):
 
 class AugmentationMethodErosion(AugmentationMethod, ABC):
 
-    def __init__(self, image, output_file_base: str, output_file_extension: str, index: int, kernel_size: int = 3):
+    def __init__(self, image, output_file_base: str, output_file_extension: str, index: int, kernel_size: int):
         super().__init__(image, output_file_base, output_file_extension, index)
         self.kernel: np.ndarray = np.ones((kernel_size, kernel_size), np.uint8)
 
@@ -181,14 +190,15 @@ if __name__ == "__main__":
         lambda image, output_file_base, output_file_extension, index:
         AugmentationMethodNull(image, output_file_base, output_file_extension, index),
     ]
+
     if ENABLE_DILATION:
         augmentation_methods_list.append(lambda image, output_file_base, output_file_extension, index:
                                          AugmentationMethodDilation(image, output_file_base, output_file_extension,
-                                                                    index))
+                                                                    index, DILATION_KERNEL))
     if ENABLE_EROSION:
         augmentation_methods_list.append(lambda image, output_file_base, output_file_extension, index:
                                          AugmentationMethodErosion(image, output_file_base, output_file_extension,
-                                                                   index))
+                                                                   index, EROSION_KERNEL))
 
     for _ in range(SHEAR_COUNT):
         augmentation_methods_list.append(lambda image, output_file_base, output_file_extension, index:
@@ -199,5 +209,10 @@ if __name__ == "__main__":
         augmentation_methods_list.append(lambda image, output_file_base, output_file_extension, index:
                                          AugmentationMethodShift(image, output_file_base, output_file_extension, index,
                                                                  SHIFT_FACTOR))
+
+    for _ in range(ROTATION_COUNT):
+        augmentation_methods_list.append(lambda image, output_file_base, output_file_extension, index:
+                                         AugmentationMethodRotation(image, output_file_base, output_file_extension,
+                                                                    index, ROTATION_FACTOR))
 
     apply_data_augmentation(INPUT_DIRECTORY, AUGMENTED_DIRECTORY_SUFFIX, augmentation_methods_list)

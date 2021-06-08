@@ -2,8 +2,18 @@
 
 DATA_FOLDER="dataset"
 
+# Whether to enable (0) or disable (non-0) debug logging.
+DEBUG_LOGGING=1
+
+function log() {
+    # Logs a message, if DEBUG_LOGGING is enabled.
+    #
+    # * param1: The message to log.
+    test $DEBUG_LOGGING -eq 0 && echo "$1"
+}
+
 swap_files() {
-    echo "Swap $1 $2"
+    log "Swap $1 $2"
     
     dir_1="$(dirname "${1}")"
     dir_2="$(dirname "${2}")"
@@ -62,7 +72,7 @@ get_split_duplicates() {
     while read -r file_to_analyze; do
         local duplicates=$(find $DATA_FOLDER -type f | grep -v "_augmented" | grep $char | grep "$file_to_analyze" | paste -sd' ')
         local in_bucket_count=$(echo "$duplicates" | grep -Po "(?<=$DATA_FOLDER\/)[0-9]*(?=\/)" | sort | uniq -c | wc -l)
-        test $in_bucket_count -gt 1 && { echo ""; echo ""; echo "Leaked duplicates: "; echo "$duplicates" | tr " " "\n"; }
+        test $in_bucket_count -gt 1 && { log ""; log ""; log "Leaked duplicates: "; leaked_dupes=$(echo "$duplicates" | tr " " "\n"); log "$leaked_dupes"; }
         test $in_bucket_count -gt 1 && deduplicate_files $char "$duplicates"
     done < <(find data/$char -type f | grep -o "[0-9]*-line-[0-9]*" | sort | uniq -c | grep -v "  1 " | awk '{print $2}')
 }
@@ -80,4 +90,6 @@ while read -r character; do
     printf "%${header_width}s\n" | tr " " "-"
     get_split_duplicates "$character"
 done < <(find data -maxdepth 1 -type d -printf '%f\n' | tail -n+2)
+
+echo "All buckets have been deduplicated!"
 

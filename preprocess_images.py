@@ -3,16 +3,16 @@ import os
 from PIL import Image
 import numpy as np
 
-INPUT_DIRECTORY = "dataset"
-OUTPUT_HEIGHT = 128
+INPUT_DIRECTORY: str = "dataset"
+OUTPUT_HEIGHT: int = 128
 """
 The height every output image will have.
 """
-OUTPUT_WIDTH = 128
+OUTPUT_WIDTH: int = 128
 """
 The width every output image will have.
 """
-EXTRA_PADDING = 48
+EXTRA_PADDING: int = 48
 """
 The total extra layer of padding to apply around each image in the horizontal and vertical axes. A layer of half this 
 value is added on each of the 4 sides of every image as whitespace.
