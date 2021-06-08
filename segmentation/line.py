@@ -4,6 +4,7 @@ from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import utils
 from PIL import Image, ImageOps
 from scipy import ndimage
 
@@ -29,63 +30,65 @@ class LineSegmenter:
             to "./".
         """
         # Set debug settings
+        print("Step 1: Line segmentation")
+        utils.print_info("(01/11) Setting up...")
         self.debug = general_options.debug
-        self.__print_debug("Setting up...")
         self.output_path = general_options.output_path
         self.im_counter = 0  # for labeling image order
         if self.debug:
             os.makedirs(self.output_path, exist_ok=True)
 
         # Open the image, convert it to a numpy array and make sure it is binary
-        self.image = self.__prepare_image(general_options.input_path)
+        self.image: np.ndarray = self.__prepare_image(general_options.input_path)
 
         # 2.1 Preprocessing
 
         # Label the connected components
-        self.__print_debug("Labeling connected components...")
+        utils.print_info("(02/11) Labeling connected components...")
         self.components, self.n_components = ndimage.label(self.image)
 
         # Find the letter height and define the blurring window
-        self.__print_debug("Finding letter height...")
-        self.letter_height = self.__find_letter_height()
-        self.blur_width = (self.letter_height * 4.0).astype(int)
-        self.blur_height = (self.letter_height * 1.0).astype(int)
+        utils.print_info("(03/11) Finding letter height...")
+        self.letter_height: float = self.__find_letter_height()
+        self.blur_width: int = (self.letter_height * 8.0).astype(int)
+        self.blur_height: int = (self.letter_height * 0.6).astype(int)
 
         # Blur the image (B(x, y))
-        self.__print_debug("Blurring image...")
+        utils.print_info("(04/11) Blurring image...")
         self.blurred_image = self.__blur_image()
 
-    def shred(self) -> Tuple[int, np.ndarray]:
+    def shred(self) -> Tuple[int, float, np.ndarray]:
         """Labels all connected components in an image as belonging to a line.
 
         Returns:
-            Tuple[int, np.ndarray]: A labeled image and the number of labels.
+            Tuple[int, float, np.ndarray]: A 3-tuple containing the number of 
+            lines, the estimated letter height and the labeled image.
         """
 
         # 2.2.1 Tracing line areas (LA(x, y))
-        self.__print_debug("Generating white path traces...")
+        utils.print_info("(05/11) Generating white path traces...")
         line_areas = self.__generate_traces()
 
         # 2.2.2 Labeling line areas (LLA(x, y))
-        self.__print_debug("Labeling line areas...")
+        utils.print_info("(06/11) Labeling line areas...")
         n_lines, labeled_line_areas = self.__get_lla(line_areas)
 
         # 2.2.3 Tracing line centers (LC(x, y))
-        self.__print_debug("Generating black path traces...")
+        utils.print_info("(07/11) Generating black path traces...")
         line_centers = self.__generate_traces(invert=True)
 
         # 2.2.4 Labeling line centers
-        self.__print_debug("Labeling line centers...")
+        utils.print_info("(08/11) Labeling line centers...")
         labeled_line_centers = self.__get_llc(labeled_line_areas, line_centers,
                                               n_lines)
 
         # 2.3.1 Assigning to line centers
-        self.__print_debug("Separating lines, pass 1...")
+        utils.print_info("(09/11) Assigning characters to line, pass 1...")
         result_line_centers = self.__separate_lines(n_lines,
                                                     labeled_line_centers)
 
         # 2.3.2 Assigning to line areas
-        self.__print_debug("Separating lines, pass 2...")
+        utils.print_info("(10/11) Assigning characters to line, pass 2...")
         result_line_areas = self.__separate_lines(n_lines, labeled_line_areas)
 
         # The original paper adds the results from 2.3.2 directly to RES(x,y),
@@ -93,10 +96,13 @@ class LineSegmenter:
         intermediate_result = result_line_areas + result_line_centers
 
         # 2.3.3 Assigning remaining pixels
+        utils.print_info("(11/11) Assigning remaining pixels...")
         result_final = self.__assign_remaining(n_lines, intermediate_result,
                                                labeled_line_areas)
 
-        return n_lines, result_final
+        utils.print_info("        Done.", end='\n')
+
+        return n_lines, self.letter_height, result_final
 
     def __prepare_image(self, image_path: str) -> np.ndarray:
         # Prepare the image
@@ -137,6 +143,8 @@ class LineSegmenter:
             height, _ = self.components[s].shape
             heights[i] = height
 
+        # TODO: check for skew by also calculating median and using that if the
+        # skew is too large
         return np.mean(heights)
 
     def __blur_image(self) -> np.ndarray:
@@ -411,7 +419,7 @@ class LineSegmenter:
 
         return final_image
 
-    def __print_debug(self, message: str):
+    def __print_info(self, message: str):
         """Helper function that prints a status message to the terminal.
         Overwrites the current line, so that all messages are printed on the
         same line.

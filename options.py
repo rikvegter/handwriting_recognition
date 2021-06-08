@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from simple_parsing import ArgumentParser, field
-from simple_parsing.helpers.fields import flag
+from simple_parsing.helpers.fields import choice, flag
 
 @dataclass
 class GeneralOptions:
@@ -11,6 +11,15 @@ class GeneralOptions:
 
     # The path to save output to
     output_path: str = field(default="./", alias="-o")
+
+    # Whether to stop the process after a given step. Useful for debugging.
+    
+    # [Step 1]: Line segmentation
+    # [Step 2]: Character segmentation
+    # [Step 3]: Character recognition
+    # [Step 4]: Style classification (final step)
+    stop_after: int = choice(1, 2, 3, 4, default=4,action="store",type=int)
+    
 
     # Save the results of intermediate steps to a debug directory in the output
     # path
