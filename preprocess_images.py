@@ -5,15 +5,15 @@ from PIL import Image
 import numpy as np
 
 INPUT_DIRECTORY: str = "dataset"
-OUTPUT_HEIGHT: int = 128
+OUTPUT_HEIGHT: int = 64
 """
 The height every output image will have.
 """
-OUTPUT_WIDTH: int = 128
+OUTPUT_WIDTH: int = 64
 """
 The width every output image will have.
 """
-EXTRA_PADDING: int = 48
+EXTRA_PADDING: int = 16
 """
 The total extra layer of padding to apply around each image in the horizontal and vertical axes. A layer of half this 
 value is added on each of the 4 sides of every image as whitespace.
@@ -125,6 +125,27 @@ def scale_image(image_array: np.ndarray, height: int, width: int) -> np.ndarray:
     return np.asarray(image, dtype=np.uint8)
 
 
+def preprocess_image(image_data: Union[np.ndarray, Image.Image], output_height: int = OUTPUT_HEIGHT,
+                     output_width: int = OUTPUT_WIDTH, extra_padding: int = EXTRA_PADDING) -> np.ndarray:
+    if isinstance(image_data, Image.Image):
+        image: Image.Image = image_data
+        if image.mode != "L":
+            image: Image.Image = image.convert(mode="L")
+    elif isinstance(image_data, np.ndarray):
+        image: Image = Image.fromarray(image_data, mode="L")
+    else:
+        raise ValueError("Type {} is not a supported image type! Please use only Pil.Image.Image or np.ndarray!"
+                         .format(type(image_data)))
+
+    # noinspection PyTypeChecker
+    image_np: np.ndarray = np.asarray(image, dtype=np.uint8)
+    trimmed: np.ndarray = trim_image(image_np)
+    scaled: np.ndarray = scale_image(trimmed, output_height - extra_padding, output_width - extra_padding)
+    padded: np.ndarray = pad_image(scaled, output_height, output_width)
+
+    return padded
+
+
 def preprocess_files(data_dir: str, output_height: int, output_width: int, extra_padding: int) -> None:
     """
     Preprocesses all image files in a given directory.
@@ -148,14 +169,8 @@ def preprocess_files(data_dir: str, output_height: int, output_width: int, extra
         for file in files:
             fullname: str = os.path.join(path, file)
             image: Image.Image = Image.open(fullname)
-            if image.mode != "L":  # Avoid making a copy
-                image: Image.Image = image.convert(mode="L")
-            # noinspection PyTypeChecker
-            image_np: np.ndarray = np.asarray(image, dtype=np.uint8)
-            trimmed: np.ndarray = trim_image(image_np)
-            scaled: np.ndarray = scale_image(trimmed, output_height - extra_padding, output_width - extra_padding)
-            padded: np.ndarray = pad_image(scaled, output_height, output_width)
-            preprocessed_image: Image.Image = Image.fromarray(padded, mode="L")
+            preprocessed_image_arr: np.ndarray = preprocess_image(image, output_height, output_width, extra_padding)
+            preprocessed_image: Image.Image = Image.fromarray(preprocessed_image_arr, mode="L")
             preprocessed_image.save(fullname)
 
 

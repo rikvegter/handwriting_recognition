@@ -60,7 +60,7 @@ def load_images_from_directory(data_dir: str) -> np.ndarray:
         image: Image.Image = Image.open(data_dir + "/" + file)
         if image.mode != "L":  # Avoid making a copy
             image: Image.Image = image.convert(mode="L")
-        image: Image.Image = image.resize((IMG_WIDTH, IMG_HEIGHT))
+        assert image.height == IMG_HEIGHT and image.width == IMG_WIDTH
 
         # noinspection PyTypeChecker
         image_np: np.ndarray = np.asarray(image, dtype=np.uint8)
@@ -362,5 +362,6 @@ def train_model(data_dir: str, model_output_path: Optional[str] = None, results_
 
 
 if __name__ == "__main__":
-    assert os.path.isdir(MODEL_OUTPUT_PATH)
+    if not os.path.isdir(MODEL_OUTPUT_PATH):
+        os.mkdir(MODEL_OUTPUT_PATH)
     train_model("dataset_preprocessed_2ximgmorph_shear_dilation_erosion", MODEL_OUTPUT_PATH, "Results")
