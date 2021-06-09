@@ -1,8 +1,11 @@
 #!/bin/bash
 
-INPUT="data"
-OUTPUT="dataset"
+INPUT="$1/data/original"
+OUTPUT="$1/data/dataset"
 PARTS=5
+
+DEBUG_LOGGING=$2
+
 
 function split_files() {
     split=$1
@@ -22,6 +25,8 @@ function split_files() {
  
     echo "$file_list" | tail -n+$skip | head -n$grab | xargs -d'\n' -I{} cp -u {} "$dir"
 }
+
+rm -dr "$OUTPUT" 2>/dev/null
 
 find "$INPUT" -maxdepth 1 -type d | tail -n+2 | while read -r directory; do
     files=$(find "$directory" -type f | shuf)

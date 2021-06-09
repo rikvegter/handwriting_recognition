@@ -9,22 +9,21 @@
 
 
 
-DATASET_DIR="dataset"
+DATASET_DIR="$1/data/dataset"
 
-IMAGEMORPH_DIR="ImageMorph"
+IMAGEMORPH_DIR="$1/ImageMorph"
 IMAGE_MORPH_SOURCE="imagemorph.c"
 IMAGE_MORPH_SOURCE_URL="https://raw.githubusercontent.com/GrHound/imagemorph.c/master/imagemorph.c"
 IMAGE_MORPH="$IMAGEMORPH_DIR/imagemorph"
 AUGMENTED_SUFFIX="_augmented"
 
-TMP_DIR="tmp"
+TMP_DIR="$1/tmp"
 
 SETTING_IMAGE_MORPH_DISPLACEMENT=1.4
 SETTING_IMAGE_MORPH_SMOOTHING_RADIUS=14
 SETTING_IMAGE_MORPH_COUNT=2
 
-# Whether to enable (0) or disable (non-0) debug logging.
-DEBUG_LOGGING=1
+DEBUG_LOGGING=$2
 
 
 
@@ -43,14 +42,16 @@ function logged_cmd() {
 }
 
 function ensure_imagemorph_available() {
+    echo "imgmorph dir: $IMAGEMORPH_DIR"
+    mkdir -p "$IMAGEMORPH_DIR"
     # Ensures that the image morph program is available.
     # If it isn't it will be downloaded (if needed) and compiled.
     test -f "$IMAGEMORPH_DIR/$IMAGE_MORPH_SOURCE" \
-            || wget -qO "$IMAGEMORPH_DIR/$IMAGE_MORPH_SOURCE" "$IMAGE_MORPH_SOURCE_URL" \
+            || logged_cmd "wget -qO \"$IMAGEMORPH_DIR/$IMAGE_MORPH_SOURCE\" \"$IMAGE_MORPH_SOURCE_URL\"" \
             || { echo "Failed to download file from $IMAGE_MORPH_SOURCE_URL!" 1>&2; rm "$IMAGEMORPH_DIR/$IMAGE_MORPH_SOURCE"; exit 1; }
 
     test -f "$IMAGE_MORPH" \
-            || gcc "$IMAGEMORPH_DIR/$IMAGE_MORPH_SOURCE" -static -static-libgcc -lm -o "$IMAGE_MORPH" \
+            || logged_cmd "gcc \"$IMAGEMORPH_DIR/$IMAGE_MORPH_SOURCE\" -static -static-libgcc -lm -o \"$IMAGE_MORPH\"" \
             || { echo "Failed to compile image morph!"; exit 2; }
 }
 
@@ -66,7 +67,7 @@ function run_image_morph() {
     local displacement="$3"
     local smoothing_radius="$4"
     log "image_morph ($3, $4): $file_in -> $file_out"
-    ./"$IMAGE_MORPH" "$displacement" "$smoothing_radius" < "$file_in" > "$file_out"
+    "$IMAGE_MORPH" "$displacement" "$smoothing_radius" < "$file_in" > "$file_out"
 }
 
 function convert_file() {
@@ -156,9 +157,10 @@ function run_for_directory() {
 
     # Replace the part in the path (e.g. the '0' in 'dataset/0/Tsadi-final'
     # To the part + the suffix (e.g. to 'dataset/0_augmented/Tsadi-final').
-    local dir_out=$(perl -Xpe "s/(?<=\/[0-9]{1,3})(?=\/)/$AUGMENTED_SUFFIX/" <<< "$dir_in")
+    local dir_out=$(perl -Xpe "s/(?<=\/[0-9]{1,3})(?=\/)/$AUGMENTED_SUFFIX/" <<< "$dir_in") || \
+            { echo "Failed to use find dir_out in dir_in: \"$dir_in\". Is your Perl up-to-date?"; exit 11; }
 
-    mkdir -p "$dir_out"
+    mkdir -p "$dir_out" || { echo "Failed to create directory: \"$dir_out\""; exit 12; }
 
     find "$dir_in" -type f -printf "%f\n" | while read -r line; do
         run_for_file "$dir_in/$line" "$dir_out"
@@ -180,9 +182,10 @@ mkdir -p "$IMAGEMORPH_DIR"
 mkdir -p "$TMP_DIR"
 
 # Ensure the ImageMorph is available (i.e. has been downloaded and compiled).
-ensure_imagemorph_available
+ensure_imagemorph_available || { echo "Failed to obtain ImageMorph!"; exit 111; }
 # Run data augmentation.
-run
+run || { echo "Failed to apply data augmentation!"; exit 112; }
 
 # Remove the temporary directory if it's empty.
 test -z $(ls -A "$TMP_DIR") && rm -d "$TMP_DIR"
+

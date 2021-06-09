@@ -11,9 +11,9 @@ class TestCharacterClassifier(TestCase):
 
     def setUp(self):
         if self.classifier is None:
-            self.classifier = CharacterClassifier("../classification_model/")
-        self.test_image: str = "../data/Alef/navis-QIrug-Qumran_extr09_0001-line-008-y1=400-y2=515-zone-HUMAN-x=1650-y=0049-w=0035-h=0042-ybas=0027-nink=631-segm=COCOS5cocos.pgm"
-        self.test_image2: str = "../data/Tet/navis-QIrug-Qumran_extr09_0310-line-022-y1=927-y2=1051-zone-HUMAN-x=2593-y=0024-w=0035-h=0065-ybas=0100-nink=777-segm=COCOS5cocos.pgm"
+            self.classifier = CharacterClassifier("../data/classification_model/")
+        self.test_image: str = "../data/original/Alef/navis-QIrug-Qumran_extr09_0001-line-008-y1=400-y2=515-zone-HUMAN-x=1650-y=0049-w=0035-h=0042-ybas=0027-nink=631-segm=COCOS5cocos.pgm"
+        self.test_image2: str = "../data/original/Tet/navis-QIrug-Qumran_extr09_0310-line-022-y1=927-y2=1051-zone-HUMAN-x=2593-y=0024-w=0035-h=0065-ybas=0100-nink=777-segm=COCOS5cocos.pgm"
 
         self.test_image_img_gs: Image.Image = Image.open(self.test_image).convert(mode="L")
         self.test_image2_img_rgb: Image.Image = Image.open(self.test_image2).convert(mode="P")

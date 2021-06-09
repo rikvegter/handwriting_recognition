@@ -8,7 +8,7 @@ from PIL import Image
 import character_recognizer
 import preprocess_images
 
-DEFAULT_MODEL: str = "classification_model/"
+DEFAULT_MODEL: str = "data/classification_model/"
 """
 The default model to use.
 

@@ -6,7 +6,7 @@ from typing import List, Tuple
 import numpy as np
 import cv2
 
-INPUT_DIRECTORY: str = "dataset"
+INPUT_DIRECTORY: str = "data/dataset"
 AUGMENTED_DIRECTORY_SUFFIX: str = "_augmented"
 
 SHEAR_FACTOR: float = 0.12

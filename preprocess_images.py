@@ -4,7 +4,7 @@ from typing import Union
 from PIL import Image
 import numpy as np
 
-INPUT_DIRECTORY: str = "dataset"
+INPUT_DIRECTORY: str = "data/dataset"
 OUTPUT_HEIGHT: int = 64
 """
 The height every output image will have.

@@ -24,7 +24,8 @@ N_FOLDS: int = 5
 DATA_AUGMENTATION_DATASET: bool = True
 DATA_AUGMENTATION_LAYERS: bool = True
 EPOCHS: int = 96
-MODEL_OUTPUT_PATH = "models"
+MODEL_OUTPUT_PATH = "data/models"
+DATASET_DIRECTORY = "data/dataset"
 NETWORK_APPLICATION = tf.keras.applications.DenseNet121
 
 IMG_WIDTH: int = 64
@@ -362,4 +363,4 @@ def train_model(data_dir: str, model_output_path: Optional[str] = None, results_
 if __name__ == "__main__":
     if not os.path.isdir(MODEL_OUTPUT_PATH):
         os.mkdir(MODEL_OUTPUT_PATH)
-    train_model("dataset_preprocessed_2ximgmorph_shear_dilation_erosion", MODEL_OUTPUT_PATH, "Results")
+    train_model(DATASET_DIRECTORY, MODEL_OUTPUT_PATH, "Results")
