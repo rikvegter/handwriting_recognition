@@ -79,7 +79,7 @@ class CharacterSegmenter:
                 os.path.join(self.output_path, f"l{line_no:02}_deskewed.png"))
 
         # word separation threshold determined using estimated character height
-        word_sep = int(0.1 * self.char_height)
+        word_sep = int(0.12 * self.char_height)
 
         # horizontally dilate for determining word boundaries
         d_struct = np.tile([0, 1, 0], [3, 1]).T
