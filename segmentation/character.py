@@ -1,6 +1,5 @@
 import ctypes
 import os
-from typing import Tuple
 
 import numpy as np
 import scipy.ndimage as nd
@@ -12,23 +11,20 @@ from skimage.morphology import convex_hull_image
 # General options (parent directory)
 from options import GeneralOptions
 
-from .character_segmentation_method import CharacterSegmentationMethod
 # Segmentation options (this directory)
-from .options import CharacterSegmentationOptions, SegmentationOptions
+from .options import CharacterSegmentationOptions
 
 
 class CharacterSegmenter:
     """Character segmentation.
     """
-    def __init__(self,
-                 general_options: GeneralOptions,
-                 segment_options: CharacterSegmentationOptions,
-                 n_lines: int,
-                 labeled_lines: np.ndarray,
-                 char_height: float) -> None:
-        
+    def __init__(self, general_options: GeneralOptions,
+                 segment_options: CharacterSegmentationOptions, n_lines: int,
+                 labeled_lines: np.ndarray, char_height: float) -> None:
+
         self.debug: bool = general_options.debug
-        self.output_path: str = os.path.join(general_options.output_path, "characters/")
+        self.output_path: str = os.path.join(general_options.output_path,
+                                             "characters/")
         self.labeled_lines: np.ndarray = labeled_lines
         self.n_lines: int = n_lines
         self.char_height: float = char_height
@@ -61,14 +57,15 @@ class CharacterSegmenter:
 
             if self.debug:
                 im = Image.fromarray((line * 255).astype(np.uint8))
-                im.save(os.path.join(self.output_path, f"l{line_no:02}_before.png"))
+                im.save(
+                    os.path.join(self.output_path,
+                                 f"l{line_no:02}_before.png"))
 
-            self.__segment(line_no, line)
+            self.__segment_line(line_no, line)
 
         utils.print_info("        Done.")
 
-
-    def __segment(self, line_no, line):
+    def __segment_line(self, line_no, line):
 
         # flip line horizontally so first char is on the left
         line = np.fliplr(line)
@@ -79,14 +76,13 @@ class CharacterSegmenter:
         if self.debug:
             im = Image.fromarray((np.fliplr(line) * 255).astype(np.uint8))
             im.save(
-                os.path.join(self.output_path,
-                                f"l{line_no:02}_deskewed.png"))
+                os.path.join(self.output_path, f"l{line_no:02}_deskewed.png"))
 
         # word separation threshold determined using estimated character height
         word_sep = int(0.1 * self.char_height)
 
         # horizontally dilate for determining word boundaries
-        d_struct = np.tile([False, True, False], [3, 1]).T
+        d_struct = np.tile([0, 1, 0], [3, 1]).T
         dilated_line = nd.binary_dilation(line, d_struct, iterations=word_sep)
 
         # calculate horizontal projection profile for word separation
@@ -99,7 +95,9 @@ class CharacterSegmenter:
 
         # loop over words
         for word_i in range(1, n_words + 1):
-            utils.print_info(f"Processing line {line_no:02}/{self.n_lines:02}, word {word_i:02}/{n_words:02}...")
+            utils.print_info(
+                f"Processing line {line_no:02}/{self.n_lines:02}, word {word_i:02}/{n_words:02}..."
+            )
             region_coords = np.argwhere(words == word_i)
             min_x = np.min(region_coords)
             max_x = np.max(region_coords)
@@ -112,16 +110,44 @@ class CharacterSegmenter:
             if np.count_nonzero(word_region) < 20:
                 continue
 
-            word = np.fliplr(self.__crop(word_region))
+            word = self.__crop(word_region)
 
-            if self.debug:
-                im = Image.fromarray((word * 255).astype(np.uint8))
-                im.save(
-                    os.path.join(self.output_path,
-                                 f"l{line_no:02}_w{word_i:02}.png"))
+            self.__segment_word(line_no, word_i, word)
 
-        
+    def __segment_word(self, line_no: int, word_no: int, word: np.ndarray):
+        # Perform binary closing to smooth edges a bit and close small holes
+        word = nd.binary_closing(word)
 
+        # Find connected components
+        word_labels, n_components = nd.label(word)
+
+        # Structure for vertical dilation (used later)
+        d_struct = np.tile([False, True, False], [3, 1])
+
+        # minimum area is determined by the area of a circle with a diameter
+        # equal to the estimated character height / 2, i.e. radius half that
+        min_area = np.pi * (self.char_height / 4)**2
+
+        new_word = np.copy(word)
+
+        # perform vertical dilation on very small elements to connect them with
+        # possible close elements they belong to
+        for label in range(1, n_components + 1):
+            component = np.where(word_labels == label, 1, 0)
+            if np.count_nonzero(component) <= min_area:
+                # Vertical dilation
+                component = nd.binary_dilation(component,
+                                               d_struct,
+                                               iterations=5)
+                # Combine dilated element with word using logical or
+                new_word = new_word | component
+
+        if self.debug:
+            im = Image.fromarray((new_word * 255).astype(np.uint8))
+            im.save(
+                os.path.join(self.output_path,
+                             f"l{line_no:02}_w{word_no:02}.png"))
+        pass
 
     def __segment_pp(self, line_no: int, line: np.ndarray):
         """Character segmentation by projection profiles
@@ -179,7 +205,9 @@ class CharacterSegmenter:
 
         # dilate vertically in order to connect broken lines
         d_struct = np.tile([False, True, False], [3, 1])
-        dilated_line = nd.binary_dilation(line, d_struct, iterations=dilation_rate)
+        dilated_line = nd.binary_dilation(line,
+                                          d_struct,
+                                          iterations=dilation_rate)
 
         # # detect connected components
         labeled_chars, num_chars = nd.label(dilated_line)
@@ -281,9 +309,9 @@ class CharacterSegmenter:
         """Crop non-zero regions from a numpy array. Basically the inverse of
         padding. Based on https://stackoverflow.com/a/39466129/4545692.
 
-        Args: im (np.ndarray): The array to crop.
+        Args: im (np.ndarray): An array to crop.
 
-        Returns: np.ndarray: The cropped image.
+        Returns: np.ndarray: A cropped image.
         """
         nonzeroes = np.argwhere(im)
         # top left corner
@@ -293,40 +321,43 @@ class CharacterSegmenter:
 
         return im[tl[0]:br[0] + 1, tl[1]:br[1] + 1]
 
-    def __deskew(self, im: np.ndarray) -> np.ndarray:
-        # try different skews, see which has the most separations, pick that and
-        # apply it
+    def __deskew(self, image: np.ndarray) -> np.ndarray:
+        """Deskew a line by trying different skews, see which has the most
+        separations, picking that and applying it.
+
+        Args: im (np.ndarray): A line to deskew.
+
+        Returns: np.ndarray: A deskewed line.
+        """
 
         # pad to account for shearing going outside image limits
-        h, _ = im.shape
-        im = np.pad(im, ((0,0), (h,h)))
+        h, _ = image.shape
+        image = np.pad(image, ((0, 0), (h, h)))
 
-        max_zeroes: int = 0
-        max_zeroes_k: float = 0
+        max_height: int = 0
+        max_height_k: float = 0
 
-        # try angles between -45 and +45 degrees
-        for k in np.arange(-1, 1, 0.1):
-            # shearing array
-            transform = [[1, 0, 0],
-                         [k, 1, 0],
-                         [0, 0, 1]]
-            sheared_image = nd.affine_transform(
-                im, 
-                transform
-            )
+        # try 40 angles between (roughly) -45 and +45 degrees
+        for k in np.arange(-1, 1, 0.05):
+            # shearing array as affine transformation
+            # (https://en.wikipedia.org/wiki/Transformation_matrix#Shearing)
+            # (https://en.wikipedia.org/wiki/Transformation_matrix#Affine_transformations)
+            transform = [[1, 0, 0], [k, 1, 0], [0, 0, 1]]
+            sheared_image = nd.affine_transform(image, transform)
 
             # vertical projection profile
             projprof = np.sum(sheared_image, axis=0)
-            zeroes = np.count_nonzero(projprof == 0)
-            if zeroes > max_zeroes:
-                max_zeroes = zeroes
-                max_zeroes_k = k
-            
-        # for now just use max height
-        transform = [[1,            0, 0], 
-                     [max_zeroes_k, 1, 0],
-                     [0,            0, 1]]
-        return nd.affine_transform(
-            im, 
-            transform,
-        )
+            # calculate max diff between peaks
+            height = np.sum((projprof[1:] - projprof[:-1])**2)
+            if height > max_height:
+                max_height = height
+                max_height_k = k
+
+        # Apply the shearing operation that yielded the straightest vertical linesß
+        transform = [[1, 0, 0], [max_height_k, 1, 0], [0, 0, 1]]
+        deskewed = nd.affine_transform(image, transform)
+
+        # crop so the image is neat
+        deskewed = self.__crop(deskewed)
+
+        return deskewed
