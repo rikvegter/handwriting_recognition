@@ -62,7 +62,7 @@ class LineSegmenter:
         # Blur the image (B(x, y))
         utils.print_info("(06/13) Blurring image...")
         self.blur_width: int = (self.letter_height * 6.0).astype(int)
-        self.blur_height: int = (self.letter_height * 0.6).astype(int)
+        self.blur_height: int = (self.letter_height * 0.8).astype(int)
         self.blurred_image = self.__blur_image()
 
     def shred(self) -> Tuple[int, float, np.ndarray]:
@@ -115,15 +115,23 @@ class LineSegmenter:
     def __prepare_image(self, image_path: str) -> np.ndarray:
         # Prepare the image
         image = Image.open(image_path)
-        # make sure we're in grayscale
+        
+        # Make sure we're in grayscale
         image = ImageOps.grayscale(image)
+        
         # Convert to numpy array
         image = np.asarray(image)
+        
         # Convert to binary; 255 is white, 0 is black.
         # We want ones where the image is black
         image = np.where(image < 127, 1, 0)
-        # detect possible baseline rotation using hough lines
+        
+        # Detect and correct possible baseline rotation using hough transform
         image = self.__straighten(image)
+        
+        # Flip the image horizontally so beginning of line is at the left (i.e.
+        # closer to 0)
+        image = np.fliplr(image)
 
         if self.debug:
             output = Image.fromarray((image * 255).astype(np.uint8))
@@ -132,10 +140,7 @@ class LineSegmenter:
                              f"{self.im_counter}_binarized_image.png"))
             self.im_counter += 1
 
-        # rotate the image by 180 degrees by mirroring horizontally and
-        # vertically
-        #TODO: only flip horizontally (180° is not necessary)
-        return np.flip(image)
+        return image
 
     def __find_letter_height(self) -> float:
         """Finds the average letter height based on the average height of the
@@ -240,9 +245,12 @@ class LineSegmenter:
 
         # If necessary, save intermediary debug images
         if self.debug:
+            # undo horizontal flip
+            out_img = np.fliplr(tracers)
+
             # array of k values
             output_1 = Image.fromarray(
-                np.interp(tracers, (tracers.min(), tracers.max()),
+                np.interp(out_img, (out_img.min(), out_img.max()),
                           (0, 255)).astype(np.uint8))
 
             if invert:
@@ -257,8 +265,11 @@ class LineSegmenter:
             self.im_counter += 1
 
             # tracers
+            # undo horizontal flip
+            out_img2 = np.fliplr(traces)
+
             output_2 = Image.fromarray(
-                (np.interp(traces, (traces.min(), traces.max()),
+                (np.interp(out_img2, (out_img2.min(), out_img2.max()),
                            (0, 255))).astype(np.uint8))
             output_2.save(
                 os.path.join(self.output_path,
@@ -302,11 +313,14 @@ class LineSegmenter:
             output_labels += np.where(labels == l, i + 1, 0)
 
         if self.debug:
-            output_labels = np.ma.masked_where(output_labels == 0,
-                                               output_labels)
-            cm = plt.get_cmap('turbo', lut=len(labels_to_keep)).copy()
+            # undo horizontal flip
+            out_img = np.fliplr(output_labels)
+
+            out_img = np.ma.masked_where(out_img == 0,
+                                               out_img)
+            cm = plt.get_cmap('turbo', lut=len(labels_to_keep) + 1).copy()
             cm.set_bad(color='black')
-            colored_image = cm(output_labels)
+            colored_image = cm(out_img)
             Image.fromarray(
                 (colored_image[:, :, :3] * 255).astype(np.uint8)).save(
                     os.path.join(self.output_path,
@@ -322,9 +336,11 @@ class LineSegmenter:
 
         if self.debug:
             output_labels = np.ma.masked_where(llc == 0, llc)
-            cm = plt.get_cmap('turbo', lut=n_labels).copy()
+            # undo horizontal flip
+            out_img = np.fliplr(output_labels)
+            cm = plt.get_cmap('turbo', lut=n_labels + 1).copy()
             cm.set_bad(color='black')
-            colored_image = cm(output_labels)
+            colored_image = cm(out_img)
             Image.fromarray(
                 (colored_image[:, :, :3] * 255).astype(np.uint8)).save(
                     os.path.join(self.output_path,
@@ -369,6 +385,8 @@ class LineSegmenter:
         if self.debug:
             # Print a colored image to represent component labeling
             output_labels = np.ma.masked_where(res == 0, res)
+            # undo horizontal flip
+            out_img = np.fliplr(output_labels)
             cm = plt.get_cmap('turbo', lut=n_lines + 1).copy()
             cm.set_bad(color='black')
             colored_image = cm(output_labels)
@@ -407,7 +425,7 @@ class LineSegmenter:
                 intermediate_result))
 
         # rotate back so output corresponds to input
-        final_image = np.flip(final_image)
+        final_image = np.fliplr(final_image)
 
         # reverse line labels so first line has label 1 instead of the highest label
         final_image = np.where(final_image != 0, n_lines - final_image + 1,
@@ -416,7 +434,7 @@ class LineSegmenter:
         if self.debug:
             # Print a colored image to represent component labeling
             output_labels = np.ma.masked_where(final_image == 0, final_image)
-            cm = plt.get_cmap('turbo', lut=n_lines).copy()
+            cm = plt.get_cmap('turbo', lut=n_lines + 1).copy()
             cm.set_bad(color='black')
             colored_image = cm(output_labels)
             Image.fromarray(
@@ -456,10 +474,9 @@ class LineSegmenter:
         # Rotate the image and return the result
         return ndimage.rotate(image, rotation)
 
-
     def __despeckle(self):
         """Connected components based despeckling"""
-        
+
         # Determine speckle size as function of letter height
         speckle_size = self.letter_height * 0.3
 
@@ -468,25 +485,23 @@ class LineSegmenter:
         # Check the size of all components and create an array indicating which
         # components should be discarded based on their index (1-indexed)
         to_discard = ndimage.labeled_comprehension(
-            self.image,
-            self.components,
-            component_labels,
-            lambda v: np.sum(v) <= speckle_size ** 2,
-            bool,
-            False
-        )
+            self.image, self.components, component_labels,
+            lambda v: np.sum(v) <= speckle_size**2, bool, False)
 
         labels_to_discard = component_labels[to_discard]
 
         # Remove speckles from the image and the list of components
-        self.image = np.where(np.isin(self.components, labels_to_discard, invert=True), self.image, 0)
-        self.components = np.where(np.isin(self.components, labels_to_discard, invert=True), self.components, 0)
-        
+        self.image = np.where(
+            np.isin(self.components, labels_to_discard, invert=True),
+            self.image, 0)
+        self.components = np.where(
+            np.isin(self.components, labels_to_discard, invert=True),
+            self.components, 0)
+
         if self.debug:
             output = Image.fromarray((self.image * 255).astype(np.uint8))
             output.save(
-                os.path.join(self.output_path,
-                             f"{self.im_counter}_binarized_image_despeckled.png"))
+                os.path.join(
+                    self.output_path,
+                    f"{self.im_counter}_binarized_image_despeckled.png"))
             self.im_counter += 1
-
-        pass
