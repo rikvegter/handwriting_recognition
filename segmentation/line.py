@@ -4,6 +4,8 @@ from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats.stats import mode
+from skimage.transform.hough_transform import hough_line, hough_line_peaks
 import utils
 from PIL import Image, ImageOps
 from scipy import ndimage
@@ -19,8 +21,7 @@ class LineSegmenter:
     """Implementation of "Handwritten Text Line Segmentation by Shredding Text
     into its Lines" by Anguelos Nicolaou and Basilis Gatos (2009; doi:10/b5wsx6)
     """
-    def __init__(self,
-                 general_options: GeneralOptions,
+    def __init__(self, general_options: GeneralOptions,
                  segment_options: LineSegmentationOptions) -> None:
         """Initialize the line shredder
 
@@ -31,7 +32,7 @@ class LineSegmenter:
         """
         # Set debug settings
         print("Step 1: Line segmentation")
-        utils.print_info("(01/11) Setting up...")
+        utils.print_info("(01/12) Setting up...")
         self.debug = general_options.debug
         self.output_path = general_options.output_path
         self.im_counter = 0  # for labeling image order
@@ -39,22 +40,25 @@ class LineSegmenter:
             os.makedirs(self.output_path, exist_ok=True)
 
         # Open the image, convert it to a numpy array and make sure it is binary
-        self.image: np.ndarray = self.__prepare_image(general_options.input_path)
+        # Also check if the baseline is rotated, and if so, rotate it back
+        utils.print_info("(02/12) Straightening baseline...")
+        self.image: np.ndarray = self.__prepare_image(
+            general_options.input_path)
 
         # 2.1 Preprocessing
 
         # Label the connected components
-        utils.print_info("(02/11) Labeling connected components...")
+        utils.print_info("(03/12) Labeling connected components...")
         self.components, self.n_components = ndimage.label(self.image)
 
         # Find the letter height and define the blurring window
-        utils.print_info("(03/11) Finding letter height...")
+        utils.print_info("(04/12) Finding letter height...")
         self.letter_height: float = self.__find_letter_height()
-        self.blur_width: int = (self.letter_height * 8.0).astype(int)
+        self.blur_width: int = (self.letter_height * 6.0).astype(int)
         self.blur_height: int = (self.letter_height * 0.6).astype(int)
 
         # Blur the image (B(x, y))
-        utils.print_info("(04/11) Blurring image...")
+        utils.print_info("(05/12) Blurring image...")
         self.blurred_image = self.__blur_image()
 
     def shred(self) -> Tuple[int, float, np.ndarray]:
@@ -66,29 +70,29 @@ class LineSegmenter:
         """
 
         # 2.2.1 Tracing line areas (LA(x, y))
-        utils.print_info("(05/11) Generating white path traces...")
+        utils.print_info("(06/12) Generating white path traces...")
         line_areas = self.__generate_traces()
 
         # 2.2.2 Labeling line areas (LLA(x, y))
-        utils.print_info("(06/11) Labeling line areas...")
+        utils.print_info("(07/12) Labeling line areas...")
         n_lines, labeled_line_areas = self.__get_lla(line_areas)
 
         # 2.2.3 Tracing line centers (LC(x, y))
-        utils.print_info("(07/11) Generating black path traces...")
+        utils.print_info("(08/12) Generating black path traces...")
         line_centers = self.__generate_traces(invert=True)
 
         # 2.2.4 Labeling line centers
-        utils.print_info("(08/11) Labeling line centers...")
+        utils.print_info("(09/12) Labeling line centers...")
         labeled_line_centers = self.__get_llc(labeled_line_areas, line_centers,
                                               n_lines)
 
         # 2.3.1 Assigning to line centers
-        utils.print_info("(09/11) Assigning characters to line, pass 1...")
+        utils.print_info("(10/12) Assigning characters to line, pass 1...")
         result_line_centers = self.__separate_lines(n_lines,
                                                     labeled_line_centers)
 
         # 2.3.2 Assigning to line areas
-        utils.print_info("(10/11) Assigning characters to line, pass 2...")
+        utils.print_info("(11/12) Assigning characters to line, pass 2...")
         result_line_areas = self.__separate_lines(n_lines, labeled_line_areas)
 
         # The original paper adds the results from 2.3.2 directly to RES(x,y),
@@ -96,7 +100,7 @@ class LineSegmenter:
         intermediate_result = result_line_areas + result_line_centers
 
         # 2.3.3 Assigning remaining pixels
-        utils.print_info("(11/11) Assigning remaining pixels...")
+        utils.print_info("(12/12) Assigning remaining pixels...")
         result_final = self.__assign_remaining(n_lines, intermediate_result,
                                                labeled_line_areas)
 
@@ -110,14 +114,15 @@ class LineSegmenter:
         # make sure we're in grayscale
         image = ImageOps.grayscale(image)
         # Convert to numpy array
-        np_image = np.asarray(image)
+        image = np.asarray(image)
         # Convert to binary; 255 is white, 0 is black.
         # We want ones where the image is black
-        np_image_binarized = np.where(np_image < 127, 1, 0)
+        image = np.where(image < 127, 1, 0)
+        # detect possible baseline rotation using hough lines
+        image = self.__straighten(image)
 
         if self.debug:
-            output = Image.fromarray(
-                (np_image_binarized * 255).astype(np.uint8))
+            output = Image.fromarray((image * 255).astype(np.uint8))
             output.save(
                 os.path.join(self.output_path,
                              f"{self.im_counter}_binarized_image.png"))
@@ -125,9 +130,8 @@ class LineSegmenter:
 
         # rotate the image by 180 degrees by mirroring horizontally and
         # vertically
-        rotated = np.flip(np_image_binarized)
-
-        return rotated  # np_image_binarized
+        #TODO: only flip horizontally (180° is not necessary)
+        return np.flip(image)
 
     def __find_letter_height(self) -> float:
         """Finds the average letter height based on the average height of the
@@ -143,8 +147,8 @@ class LineSegmenter:
             height, _ = self.components[s].shape
             heights[i] = height
 
-        # TODO: check for skew by also calculating median and using that if the
-        # skew is too large
+        # TODO: check for distribution skew by also calculating median and using
+        # that if the skew is too large
         return np.mean(heights)
 
     def __blur_image(self) -> np.ndarray:
@@ -419,11 +423,31 @@ class LineSegmenter:
 
         return final_image
 
-    def __print_info(self, message: str):
-        """Helper function that prints a status message to the terminal.
-        Overwrites the current line, so that all messages are printed on the
-        same line.
+    def __straighten(self, image: np.ndarray) -> np.ndarray:
+        """Straighten the image so the baselines of the text are as horizontal 
+        as possible.
 
-        Args: message (str): The debug message to print
+        Args:
+            image (np.ndarray): An image to straighten
+
+        Returns:
+            np.ndarray: The straightened image
         """
-        if self.debug: print(f"\x1b[1K\r{message}", end='')
+        # Allow max 30° rotation
+        # (relative to 90° as we're looking at the tangent)
+        tested_angles = np.deg2rad(np.linspace(105, 75, 30))
+
+        # Calculate the hough space
+        h, theta, d = hough_line(image, theta=tested_angles)
+
+        # Calculate the angles
+        _, angles, _ = hough_line_peaks(h, theta, d)
+
+        # Round the angles so we can find the mode
+        angles = np.around(angles, decimals=2)
+
+        # Calculate the mode and substract 90 to find the relative rotation
+        rotation = np.rad2deg(mode(angles)[0][0]) - 90
+
+        # Rotate the image and return the result
+        return ndimage.rotate(image, rotation)
