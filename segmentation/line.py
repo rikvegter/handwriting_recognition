@@ -1,4 +1,5 @@
 import argparse
+from operator import invert
 import os
 from typing import Tuple
 
@@ -32,7 +33,7 @@ class LineSegmenter:
         """
         # Set debug settings
         print("Step 1: Line segmentation")
-        utils.print_info("(01/12) Setting up...")
+        utils.print_info("(01/13) Setting up...")
         self.debug = general_options.debug
         self.output_path = general_options.output_path
         self.im_counter = 0  # for labeling image order
@@ -41,24 +42,27 @@ class LineSegmenter:
 
         # Open the image, convert it to a numpy array and make sure it is binary
         # Also check if the baseline is rotated, and if so, rotate it back
-        utils.print_info("(02/12) Straightening baseline...")
+        utils.print_info("(02/13) Straightening baseline...")
         self.image: np.ndarray = self.__prepare_image(
             general_options.input_path)
 
         # 2.1 Preprocessing
 
         # Label the connected components
-        utils.print_info("(03/12) Labeling connected components...")
+        utils.print_info("(03/13) Labeling connected components...")
         self.components, self.n_components = ndimage.label(self.image)
 
         # Find the letter height and define the blurring window
-        utils.print_info("(04/12) Finding letter height...")
+        utils.print_info("(04/13) Finding letter height...")
         self.letter_height: float = self.__find_letter_height()
-        self.blur_width: int = (self.letter_height * 6.0).astype(int)
-        self.blur_height: int = (self.letter_height * 0.6).astype(int)
+
+        utils.print_info("(05/13) Despeckling...")
+        self.__despeckle()
 
         # Blur the image (B(x, y))
-        utils.print_info("(05/12) Blurring image...")
+        utils.print_info("(06/13) Blurring image...")
+        self.blur_width: int = (self.letter_height * 6.0).astype(int)
+        self.blur_height: int = (self.letter_height * 0.6).astype(int)
         self.blurred_image = self.__blur_image()
 
     def shred(self) -> Tuple[int, float, np.ndarray]:
@@ -70,29 +74,29 @@ class LineSegmenter:
         """
 
         # 2.2.1 Tracing line areas (LA(x, y))
-        utils.print_info("(06/12) Generating white path traces...")
+        utils.print_info("(07/13) Generating white path traces...")
         line_areas = self.__generate_traces()
 
         # 2.2.2 Labeling line areas (LLA(x, y))
-        utils.print_info("(07/12) Labeling line areas...")
+        utils.print_info("(08/13) Labeling line areas...")
         n_lines, labeled_line_areas = self.__get_lla(line_areas)
 
         # 2.2.3 Tracing line centers (LC(x, y))
-        utils.print_info("(08/12) Generating black path traces...")
+        utils.print_info("(09/13) Generating black path traces...")
         line_centers = self.__generate_traces(invert=True)
 
         # 2.2.4 Labeling line centers
-        utils.print_info("(09/12) Labeling line centers...")
+        utils.print_info("(10/13) Labeling line centers...")
         labeled_line_centers = self.__get_llc(labeled_line_areas, line_centers,
                                               n_lines)
 
         # 2.3.1 Assigning to line centers
-        utils.print_info("(10/12) Assigning characters to line, pass 1...")
+        utils.print_info("(11/13) Assigning characters to line, pass 1...")
         result_line_centers = self.__separate_lines(n_lines,
                                                     labeled_line_centers)
 
         # 2.3.2 Assigning to line areas
-        utils.print_info("(11/12) Assigning characters to line, pass 2...")
+        utils.print_info("(12/13) Assigning characters to line, pass 2...")
         result_line_areas = self.__separate_lines(n_lines, labeled_line_areas)
 
         # The original paper adds the results from 2.3.2 directly to RES(x,y),
@@ -100,7 +104,7 @@ class LineSegmenter:
         intermediate_result = result_line_areas + result_line_centers
 
         # 2.3.3 Assigning remaining pixels
-        utils.print_info("(12/12) Assigning remaining pixels...")
+        utils.print_info("(13/13) Assigning remaining pixels...")
         result_final = self.__assign_remaining(n_lines, intermediate_result,
                                                labeled_line_areas)
 
@@ -365,7 +369,7 @@ class LineSegmenter:
         if self.debug:
             # Print a colored image to represent component labeling
             output_labels = np.ma.masked_where(res == 0, res)
-            cm = plt.get_cmap('turbo', lut=n_lines).copy()
+            cm = plt.get_cmap('turbo', lut=n_lines + 1).copy()
             cm.set_bad(color='black')
             colored_image = cm(output_labels)
             Image.fromarray(
@@ -451,3 +455,38 @@ class LineSegmenter:
 
         # Rotate the image and return the result
         return ndimage.rotate(image, rotation)
+
+
+    def __despeckle(self):
+        """Connected components based despeckling"""
+        
+        # Determine speckle size as function of letter height
+        speckle_size = self.letter_height * 0.3
+
+        component_labels = np.arange(1, self.n_components + 1)
+
+        # Check the size of all components and create an array indicating which
+        # components should be discarded based on their index (1-indexed)
+        to_discard = ndimage.labeled_comprehension(
+            self.image,
+            self.components,
+            component_labels,
+            lambda v: np.sum(v) <= speckle_size ** 2,
+            bool,
+            False
+        )
+
+        labels_to_discard = component_labels[to_discard]
+
+        # Remove speckles from the image and the list of components
+        self.image = np.where(np.isin(self.components, labels_to_discard, invert=True), self.image, 0)
+        self.components = np.where(np.isin(self.components, labels_to_discard, invert=True), self.components, 0)
+        
+        if self.debug:
+            output = Image.fromarray((self.image * 255).astype(np.uint8))
+            output.save(
+                os.path.join(self.output_path,
+                             f"{self.im_counter}_binarized_image_despeckled.png"))
+            self.im_counter += 1
+
+        pass
