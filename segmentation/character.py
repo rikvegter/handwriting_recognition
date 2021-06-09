@@ -118,6 +118,12 @@ class CharacterSegmenter:
         # Perform binary closing to smooth edges a bit and close small holes
         word = nd.binary_closing(word)
 
+        # Set dilation rate
+        dilation_rate = 5
+
+        # add some vertical padding to account for vertical dilation
+        word = np.pad(word, ((dilation_rate, dilation_rate), (0, 0)))
+
         # Find connected components
         word_labels, n_components = nd.label(word)
 
@@ -128,6 +134,7 @@ class CharacterSegmenter:
         # equal to the estimated character height / 2, i.e. radius half that
         min_area = np.pi * (self.char_height / 4)**2
 
+        # make a copy of the word to work on
         new_word = np.copy(word)
 
         # perform vertical dilation on very small elements to connect them with
@@ -138,7 +145,7 @@ class CharacterSegmenter:
                 # Vertical dilation
                 component = nd.binary_dilation(component,
                                                d_struct,
-                                               iterations=5)
+                                               iterations=dilation_rate)
                 # Combine dilated element with word using logical or
                 new_word = new_word | component
 
@@ -147,7 +154,63 @@ class CharacterSegmenter:
             im.save(
                 os.path.join(self.output_path,
                              f"l{line_no:02}_w{word_no:02}.png"))
-        pass
+
+    def __crop(self, im: np.ndarray) -> np.ndarray:
+        """Crop non-zero regions from a numpy array. Basically the inverse of
+        padding. Based on https://stackoverflow.com/a/39466129/4545692.
+
+        Args: im (np.ndarray): An array to crop.
+
+        Returns: np.ndarray: A cropped image.
+        """
+        nonzeroes = np.argwhere(im)
+        # top left corner
+        tl = nonzeroes.min(axis=0)
+        # bottom right corner
+        br = nonzeroes.max(axis=0)
+
+        return im[tl[0]:br[0] + 1, tl[1]:br[1] + 1]
+
+    def __deskew(self, image: np.ndarray) -> np.ndarray:
+        """Deskew a line by trying different skews, see which has the most
+        separations, picking that and applying it.
+
+        Args: im (np.ndarray): A line to deskew.
+
+        Returns: np.ndarray: A deskewed line.
+        """
+
+        # pad to account for shearing going outside image limits
+        h, _ = image.shape
+        image = np.pad(image, ((0, 0), (h, h)))
+
+        max_height: int = 0
+        max_height_k: float = 0
+
+        # try 40 angles between (roughly) -45 and +45 degrees
+        for k in np.arange(-1, 1, 0.05):
+            # shearing array as affine transformation
+            # (https://en.wikipedia.org/wiki/Transformation_matrix#Shearing)
+            # (https://en.wikipedia.org/wiki/Transformation_matrix#Affine_transformations)
+            transform = [[1, 0, 0], [k, 1, 0], [0, 0, 1]]
+            sheared_image = nd.affine_transform(image, transform)
+
+            # vertical projection profile
+            projprof = np.sum(sheared_image, axis=0)
+            # calculate max diff between peaks
+            height = np.sum((projprof[1:] - projprof[:-1])**2)
+            if height > max_height:
+                max_height = height
+                max_height_k = k
+
+        # Apply the shearing operation that yielded the straightest vertical linesß
+        transform = [[1, 0, 0], [max_height_k, 1, 0], [0, 0, 1]]
+        deskewed = nd.affine_transform(image, transform)
+
+        # crop so the image is neat
+        deskewed = self.__crop(deskewed)
+
+        return deskewed
 
     def __segment_pp(self, line_no: int, line: np.ndarray):
         """Character segmentation by projection profiles
@@ -304,60 +367,3 @@ class CharacterSegmenter:
             im.save(os.path.join(self.output_path, f"l{line_no}_skeleton.png"))
 
         return current
-
-    def __crop(self, im: np.ndarray) -> np.ndarray:
-        """Crop non-zero regions from a numpy array. Basically the inverse of
-        padding. Based on https://stackoverflow.com/a/39466129/4545692.
-
-        Args: im (np.ndarray): An array to crop.
-
-        Returns: np.ndarray: A cropped image.
-        """
-        nonzeroes = np.argwhere(im)
-        # top left corner
-        tl = nonzeroes.min(axis=0)
-        # bottom right corner
-        br = nonzeroes.max(axis=0)
-
-        return im[tl[0]:br[0] + 1, tl[1]:br[1] + 1]
-
-    def __deskew(self, image: np.ndarray) -> np.ndarray:
-        """Deskew a line by trying different skews, see which has the most
-        separations, picking that and applying it.
-
-        Args: im (np.ndarray): A line to deskew.
-
-        Returns: np.ndarray: A deskewed line.
-        """
-
-        # pad to account for shearing going outside image limits
-        h, _ = image.shape
-        image = np.pad(image, ((0, 0), (h, h)))
-
-        max_height: int = 0
-        max_height_k: float = 0
-
-        # try 40 angles between (roughly) -45 and +45 degrees
-        for k in np.arange(-1, 1, 0.05):
-            # shearing array as affine transformation
-            # (https://en.wikipedia.org/wiki/Transformation_matrix#Shearing)
-            # (https://en.wikipedia.org/wiki/Transformation_matrix#Affine_transformations)
-            transform = [[1, 0, 0], [k, 1, 0], [0, 0, 1]]
-            sheared_image = nd.affine_transform(image, transform)
-
-            # vertical projection profile
-            projprof = np.sum(sheared_image, axis=0)
-            # calculate max diff between peaks
-            height = np.sum((projprof[1:] - projprof[:-1])**2)
-            if height > max_height:
-                max_height = height
-                max_height_k = k
-
-        # Apply the shearing operation that yielded the straightest vertical linesß
-        transform = [[1, 0, 0], [max_height_k, 1, 0], [0, 0, 1]]
-        deskewed = nd.affine_transform(image, transform)
-
-        # crop so the image is neat
-        deskewed = self.__crop(deskewed)
-
-        return deskewed
