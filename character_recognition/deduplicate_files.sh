@@ -15,7 +15,7 @@ function log() {
 
 swap_files() {
     log "Swap $1 $2"
-    
+
     dir_1="$(dirname "${1}")"
     dir_2="$(dirname "${2}")"
 
@@ -38,8 +38,6 @@ find_unique_file() {
         # Kaf-final has 2 images that do not follow the same naming scheme. However, it has been
         # manually verified that these two images are unique within kaf-final.
         test -z $identifier && { unique_file="$potentially_unique_file_line"; continue; }
-
-        local unique_files_lookup="${unique_files[$identifier]}"
 
         if [[ "${unique_files[$identifier]}" -eq 1 ]]; then
             unique_file="$potentially_unique_file_line"
