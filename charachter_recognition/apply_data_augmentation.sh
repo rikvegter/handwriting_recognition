@@ -42,7 +42,7 @@ function logged_cmd() {
 }
 
 function ensure_imagemorph_available() {
-    echo "imgmorph dir: $IMAGEMORPH_DIR"
+    log "imgmorph dir: $IMAGEMORPH_DIR"
     mkdir -p "$IMAGEMORPH_DIR"
     # Ensures that the image morph program is available.
     # If it isn't it will be downloaded (if needed) and compiled.

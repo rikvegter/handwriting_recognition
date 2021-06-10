@@ -1,10 +1,11 @@
 import os
+import sys
 from typing import Union
 
 from PIL import Image
 import numpy as np
 
-INPUT_DIRECTORY: str = "data/dataset"
+DEFAULT_INPUT_DIRECTORY: str = "data/dataset"
 OUTPUT_HEIGHT: int = 64
 """
 The height every output image will have.
@@ -176,4 +177,5 @@ def preprocess_files(data_dir: str, output_height: int, output_width: int, extra
 
 if __name__ == "__main__":
     assert EXTRA_PADDING < OUTPUT_WIDTH and EXTRA_PADDING < OUTPUT_HEIGHT
-    preprocess_files(INPUT_DIRECTORY, OUTPUT_HEIGHT, OUTPUT_WIDTH, EXTRA_PADDING)
+    input_dir = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_INPUT_DIRECTORY
+    preprocess_files(input_dir, OUTPUT_HEIGHT, OUTPUT_WIDTH, EXTRA_PADDING)

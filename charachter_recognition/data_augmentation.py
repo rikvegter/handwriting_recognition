@@ -1,12 +1,13 @@
 import os
 import random
+import sys
 from abc import ABC, abstractmethod
 from typing import List, Tuple
 
 import numpy as np
 import cv2
 
-INPUT_DIRECTORY: str = "data/dataset"
+DEFAULT_INPUT_DIRECTORY: str = "data/dataset"
 AUGMENTED_DIRECTORY_SUFFIX: str = "_augmented"
 
 SHEAR_FACTOR: float = 0.12
@@ -186,6 +187,8 @@ def apply_data_augmentation(data_dir: str, augmented_directory_suffix: str, augm
 
 
 if __name__ == "__main__":
+    input_dir = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_INPUT_DIRECTORY
+
     augmentation_methods_list = [
         lambda image, output_file_base, output_file_extension, index:
         AugmentationMethodNull(image, output_file_base, output_file_extension, index),
@@ -215,4 +218,4 @@ if __name__ == "__main__":
                                          AugmentationMethodRotation(image, output_file_base, output_file_extension,
                                                                     index, ROTATION_FACTOR))
 
-    apply_data_augmentation(INPUT_DIRECTORY, AUGMENTED_DIRECTORY_SUFFIX, augmentation_methods_list)
+    apply_data_augmentation(input_dir, AUGMENTED_DIRECTORY_SUFFIX, augmentation_methods_list)

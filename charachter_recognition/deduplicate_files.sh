@@ -34,11 +34,12 @@ find_unique_file() {
     unset unique_file
     while read -r potentially_unique_file_line; do
         local identifier=$(get_identifier "$potentially_unique_file_line")
-        local unique_files_lookup="${unique_files[$identifier]}"
 
         # Kaf-final has 2 images that do not follow the same naming scheme. However, it has been
         # manually verified that these two images are unique within kaf-final.
-        test -z $unique_files_lookup && { unique_file="$potentially_unique_file_line"; continue; }
+        test -z $identifier && { unique_file="$potentially_unique_file_line"; continue; }
+
+        local unique_files_lookup="${unique_files[$identifier]}"
 
         if [[ "${unique_files[$identifier]}" -eq 1 ]]; then
             unique_file="$potentially_unique_file_line"

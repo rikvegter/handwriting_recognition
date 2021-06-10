@@ -15,7 +15,7 @@ from tensorflow.keras import layers
 from tensorflow.keras.layers.experimental import preprocessing
 from tensorflow.python.keras.callbacks import History
 
-BATCH_SIZE: int = 64
+BATCH_SIZE: int = 128
 SHUFFLE_BUFFER_SIZE: int = 256
 """
 Note that changing the number of folds also requires (re)creating the dataset to support it. 
@@ -24,9 +24,8 @@ N_FOLDS: int = 5
 DATA_AUGMENTATION_DATASET: bool = True
 DATA_AUGMENTATION_LAYERS: bool = True
 EPOCHS: int = 96
-MODEL_OUTPUT_PATH = "data/models"
-DATASET_DIRECTORY = "data/dataset"
-NETWORK_APPLICATION = tf.keras.applications.DenseNet121
+DEFAULT_MODEL_OUTPUT_PATH = "data/models"
+DEFAULT_DATASET_DIRECTORY = "data/dataset"
 
 IMG_WIDTH: int = 64
 IMG_HEIGHT: int = 64
@@ -213,12 +212,12 @@ def get_model(labels: List[str]) -> tf.keras.Sequential:
     model.add(layers.Input(shape=input_shape))
     model.add(preprocessing.Rescaling(1. / 255))
     if DATA_AUGMENTATION_LAYERS:
-        model.add(preprocessing.RandomRotation(factor=(1 / 36)))  # +/-  1/36 * 2pi rad (10 deg)
+        model.add(preprocessing.RandomRotation(factor=(1 / 36)))  # +/- 1/36 * 2pi rad (10 deg)
         model.add(preprocessing.RandomZoom(height_factor=0.2))
 
     # Use max pooling, because the images are inverted such that ink (=255) = white, black (=0) = background.
-    model.add(NETWORK_APPLICATION(input_shape=input_shape, include_top=False, pooling="max", weights=None,
-                                  classes=len(labels)))
+    model.add(tf.keras.applications.DenseNet121(input_shape=input_shape, include_top=False, pooling="max", weights=None,
+                                                classes=len(labels)))
 
     model.compile(
         optimizer=tf.optimizers.Adam(),
@@ -309,7 +308,11 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
     ax.set_ylabel("Predicted label")
     ax.figure.tight_layout()
 
-    plt.show()
+    if model_checkpoint_path is not None:
+        plt.savefig(model_checkpoint_path + "/confMat.pdf")
+    else:
+        plt.show()
+    plt.close()
 
     #
 
@@ -329,7 +332,11 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
     plt.legend(loc="upper right")
     plt.title("Training and Validation Loss")
 
-    plt.show()
+    if model_checkpoint_path is not None:
+        plt.savefig(model_checkpoint_path + "/trainGraph.pdf")
+    else:
+        plt.show()
+    plt.close()
     print("\nTest_acc: {}\nacc: {}\nval_acc: {}\nloss: {}\nval_loss:{}\n".format(test_acc, acc, val_acc,
                                                                                  loss, val_loss))
 
@@ -350,9 +357,8 @@ def train_model(data_dir: str, model_output_path: Optional[str] = None, results_
         train, test, val = get_kfold_data(data_dir, fold, labels)
         model: tf.keras.Sequential = get_model(labels)
         outputs.append(run_model(model, train, test, val, labels, "{}/model_{}/".format(model_output_path, fold)))
-        # break
 
-    output: str = f'Average test accuracy: {sum(outputs) / len(outputs):.0%}\nIndividual test accuracies: {outputs}'
+    output: str = f'Average test accuracy: {sum(outputs) / len(outputs):.2%}\nIndividual test accuracies: {outputs}'
     print(output)
 
     if results_output_path is not None:
@@ -361,6 +367,6 @@ def train_model(data_dir: str, model_output_path: Optional[str] = None, results_
 
 
 if __name__ == "__main__":
-    if not os.path.isdir(MODEL_OUTPUT_PATH):
-        os.mkdir(MODEL_OUTPUT_PATH)
-    train_model(DATASET_DIRECTORY, MODEL_OUTPUT_PATH, "Results")
+    if not os.path.isdir(DEFAULT_MODEL_OUTPUT_PATH):
+        os.mkdir(DEFAULT_MODEL_OUTPUT_PATH)
+    train_model(DEFAULT_DATASET_DIRECTORY, DEFAULT_MODEL_OUTPUT_PATH, "Results")

@@ -2,21 +2,22 @@
 
 # The base directory.
 # Don't include a trailing '/'.
-DATA_DIR="/home/pim/Documents/workspace/handwriting_recognition"
+BASE_DIR="."
 
 # Whether to enable (0) or disable (non-0) debug logging.
 DEBUG_LOGGING=1
 
+BASE_DIR=$(readlink -f "$BASE_DIR") && \
 echo "Making sure the base data is available..." && \
-bash extract_dataset.sh "$DATA_DIR" $DEBUG_LOGGING && \
+bash extract_dataset.sh "$BASE_DIR" $DEBUG_LOGGING && \
 echo "Done! Going to split data now..." && \
-bash split_data.sh "$DATA_DIR" $DEBUG_LOGGING && \
+bash split_data.sh "$BASE_DIR" $DEBUG_LOGGING && \
 echo "Done! Going to deduplicate files now..." && \
-bash deduplicate_files.sh "$DATA_DIR" $DEBUG_LOGGING && \
+bash deduplicate_files.sh "$BASE_DIR" $DEBUG_LOGGING && \
 echo "Done! Going to preprocess the images now..." && \
-python preprocess_images.py "$DATA_DIR" $DEBUG_LOGGING && \
+python preprocess_images.py "$BASE_DIR/data/dataset" $DEBUG_LOGGING && \
 echo "Done! Going to apply ImageMorph data augmentation now..." && \
-bash apply_data_augmentation.sh "$DATA_DIR" $DEBUG_LOGGING && \
+bash apply_data_augmentation.sh "$BASE_DIR" $DEBUG_LOGGING && \
 echo "Done! Going to apply the other data augmentation methods now..." && \
-python data_augmentation.py "$DATA_DIR" $DEBUG_LOGGING && \
+python data_augmentation.py "$BASE_DIR/data/dataset" $DEBUG_LOGGING && \
 echo "Done!"
