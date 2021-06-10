@@ -34,7 +34,7 @@ class CharacterClassifier:
         :param model_path: The path to the directory containing the weights of the model to use for classification.
         Defaults to #DEFAULT_MODEL.
         """
-        self.model = self.__load_model(model_path)
+        self.model = self.__load_model(model_path if model_path[-1] == "/" else model_path + "/")
 
     def __load_model(self, model_path: str) -> tf.keras.models.Model:
         assert os.path.isdir(model_path)
