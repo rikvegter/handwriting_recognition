@@ -5,8 +5,7 @@ import numpy as np
 import tensorflow as tf
 from PIL import Image
 
-import character_recognizer
-import preprocess_images
+from character_recognition import character_recognizer, preprocess_images
 
 DEFAULT_MODEL: str = "data/classification_model/"
 """

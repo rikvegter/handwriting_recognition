@@ -3,7 +3,7 @@ from unittest import TestCase
 import numpy as np
 from PIL import Image
 
-from charachter_recognition.character_classifier import CharacterClassifier
+from character_recognition.character_classifier import CharacterClassifier
 
 
 class TestCharacterClassifier(TestCase):
