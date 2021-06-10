@@ -6,21 +6,13 @@ import tensorflow as tf
 from PIL import Image
 
 from character_recognition import character_recognizer, preprocess_images
+from character_recognition.character_recognizer import LABELS
 
 DEFAULT_MODEL: str = "data/classification_model/"
 """
 The default model to use.
 
 An example model can be found here: https://drive.google.com/file/d/1utDs6NSGYzpgvAll2yvAOp1SF-z6ydza/view?usp=sharing
-"""
-
-LABELS: List[str] = ["Tsadi-final", "Kaf-final", "Mem", "Nun-final", "Gimel", "Tet", "Qof", "He", "Pe", "Lamed", "Resh",
-                     "Alef", "Shin", "Taw", "Nun-medial", "Kaf", "Tsadi-medial", "Zayin", "Mem-medial", "Dalet",
-                     "Pe-final", "Waw", "Samekh", "Yod", "Het", "Bet", "Ayin"]
-"""
-List of all the labels.
-
-The classifier outputs indices corresponding to the characters in this list.
 """
 
 

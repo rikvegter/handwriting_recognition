@@ -1,6 +1,5 @@
 import os
 import pickle
-from os import listdir
 from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -26,6 +25,9 @@ DATA_AUGMENTATION_LAYERS: bool = True
 EPOCHS: int = 96
 DEFAULT_MODEL_OUTPUT_PATH = "data/models"
 DEFAULT_DATASET_DIRECTORY = "data/dataset"
+LABELS: List[str] = ['Alef', 'Bet', 'Gimel', 'Dalet', 'He', 'Waw', 'Zayin', 'Het', 'Tet', 'Yod', 'Kaf', 'Kaf-final',
+                     'Lamed', 'Mem-medial', 'Mem', 'Nun-medial', 'Nun-final', 'Samekh', 'Ayin', 'Pe', 'Pe-final',
+                     'Tsadi-medial', 'Tsadi-final', 'Qof', 'Resh', 'Shin', 'Taw']
 
 IMG_WIDTH: int = 64
 IMG_HEIGHT: int = 64
@@ -188,17 +190,6 @@ def get_kfold_data(data_dir: str, fold: int, labels: List[str]) -> [tf.data.Data
     return train_ds, test_ds, validate_ds
 
 
-def get_labels(data_dir: str) -> List[str]:
-    """
-    Gets all the labels in the dataset.
-
-    :param data_dir: The directory to search in. This is assumed to be the top-level directory which holds all the partial sets.
-    :return: The list of labels.
-    """
-    search_dir: str = data_dir + "/0"
-    return [folder for folder in listdir(search_dir) if os.path.isdir(search_dir + "/" + folder)]
-
-
 def get_model(labels: List[str]) -> tf.keras.Sequential:
     """
     Constructs a new model.
@@ -351,7 +342,7 @@ def train_model(data_dir: str, model_output_path: Optional[str] = None, results_
     :param model_output_path: The directory to store models in.
     :param results_output_path: The file to store the results in. If the file already exists, it will be overwritten.
     """
-    labels: List[str] = get_labels(data_dir)
+    labels: List[str] = LABELS
     outputs: List[float] = []
     for fold in range(N_FOLDS):
         train, test, val = get_kfold_data(data_dir, fold, labels)
