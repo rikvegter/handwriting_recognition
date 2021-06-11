@@ -44,7 +44,7 @@ class CharacterClassifier:
         predictions: np.ndarray = self.model.predict_on_batch(images)
         return np.argmax(predictions, axis=1)
 
-    def __prepare_image(self, image_data: Union[np.ndarray, Image.Image, str]) -> np.ndarray:
+    def __prepare_image(self, image_data: Union[np.ndarray, Image.Image, str], is_inverted: bool) -> np.ndarray:
         if not isinstance(image_data, (np.ndarray, Image.Image, str)):
             raise ValueError("Type {} is not a valid image type! Only numpy arrays and PIL Images are allowed!"
                              .format(type(image_data)))
@@ -53,7 +53,8 @@ class CharacterClassifier:
             image_data: Union[np.ndarray, Image.Image] = Image.open(image_data)
 
         image: np.ndarray = preprocess_images.preprocess_image(image_data)
-        image: np.ndarray = 255 - image
+        if not is_inverted:
+            image: np.ndarray = 255 - image
         image: np.ndarray = np.repeat(image[..., np.newaxis], 3, -1)
         return image.astype(dtype=np.uint8)
 
@@ -61,18 +62,22 @@ class CharacterClassifier:
         return np.full((image_count, preprocess_images.OUTPUT_HEIGHT, preprocess_images.OUTPUT_WIDTH, 3), 255,
                        dtype=np.uint8)
 
-    def classify_image(self, image_data: Union[np.ndarray, Image.Image, str]) -> int:
+    def classify_image(self, image_data: Union[np.ndarray, Image.Image, str], is_inverted: bool = False) -> int:
         """
         Classifies an image.
 
         :param image_data: The data representing an image. This can either be a Numpy array (3d for rgb, or 2d for
         greyscale images), a PIL image, or a string containing the path to an image.
+        :param is_inverted: Whether or not the images are provided in inverted form. When this is set to False, it is
+        expected that the background is white and that the ink is black. When true, it is assumed to be the other way
+        round.
         :return: The index of the classified character in the #LABELS list.
         """
-        image = self.__prepare_image(image_data)
+        image = self.__prepare_image(image_data, is_inverted)
         return self.__classify_image(image)
 
-    def classify_images(self, image_data: Union[List[Union[np.ndarray, Image.Image, str]], np.ndarray]) -> np.ndarray:
+    def classify_images(self, image_data: Union[List[Union[np.ndarray, Image.Image, str]], np.ndarray],
+                        is_inverted: bool = False) -> np.ndarray:
         """
         Classifies multiple images.
 
@@ -84,6 +89,9 @@ class CharacterClassifier:
         for greyscale images), or a list of PIL images, numpy arrays (3d for rgb, or 2d for greyscale), or strings
         containing the paths to a images.
         Note that it's safe to mix and match image sizes in the arrays/lists as well as to mix types in the list.
+        :param is_inverted: Whether or not the images are provided in inverted form. When this is set to False, it is
+        expected that the background is white and that the ink is black. When true, it is assumed to be the other way
+        round.
         :return: An array of indices of the classified character in the #LABELS list.
         """
         if isinstance(image_data, np.ndarray):
@@ -106,5 +114,5 @@ class CharacterClassifier:
             return np.empty(0, dtype=int)
         images = self.__generate_image_holder(image_count)
         for idx in range(image_count):
-            images[idx, :, :, :] = self.__prepare_image(image_data[idx])
+            images[idx, :, :, :] = self.__prepare_image(image_data[idx], is_inverted)
         return self.__classify_images(images)
