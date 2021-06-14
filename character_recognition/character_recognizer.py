@@ -241,25 +241,24 @@ def run_model(model: tf.keras.models.Model, train: tf.data.Dataset, test: tf.dat
         # This one's exception is completely useless.
         print("Failed to print the model summary!")
 
-    if model_checkpoint_path is None:
-        save_model_callback = None
-    else:
-        save_model_callback = tf.keras.callbacks.ModelCheckpoint(
+    callbacks = []
+    if model_checkpoint_path is not None:
+        callbacks.append(tf.keras.callbacks.ModelCheckpoint(
             filepath=model_checkpoint_path,
             save_best_only=True,
             monitor="val_loss", mode="min",
             save_weights_only=True
-        )
+        ))
 
     history: History = model.fit(train,
                                  verbose=1,
                                  validation_data=validate,
                                  epochs=EPOCHS,
                                  batch_size=BATCH_SIZE,
-                                 callbacks=[save_model_callback]
+                                 callbacks=callbacks
                                  )
 
-    if model_checkpoint_path is not None and save_model_callback is not None:
+    if model_checkpoint_path is not None:
         print("Loading optimal weights...")
         model.load_weights(model_checkpoint_path)
 
