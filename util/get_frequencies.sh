@@ -17,7 +17,10 @@ function log() {
 }
 
 function get_character_index() {
-    echo "${LETTER_MAP[$1]}"
+    local character_name=$(echo "$1" | sed "s/Tsadi/Tsadi-medial/g;s/Tasdi-final/Tsadi-final/g")
+    local idx="${LETTER_MAP[$character_name]}"
+    test -z "$idx" && { echo "Failed to find index for character \"$1\"!"; exit 1; }
+    echo "$idx"
 }
 
 function get_character_indices() {
