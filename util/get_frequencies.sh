@@ -61,6 +61,7 @@ test $len -ne $len2 && { echo "Number of character combinations ($len) does not 
 > "$OUTPUT_FILE"
 
 for (( idx = 0; idx < $len; ++idx )); do
-    printf '%d %s\n' ${frequencies[$idx]} "$(get_character_indices ${combinations[$idx]})" >> "$OUTPUT_FILE"
+    combination=$(get_character_indices ${combinations[$idx]} | awk '{ for (i=NF; i>1; --i) printf("%s ",$i); print $1; }')
+    printf '%d %s\n' ${frequencies[$idx]} "$combination" >> "$OUTPUT_FILE"
 done
 
