@@ -14,7 +14,7 @@ def main(args):
     # Segment lines
     line_segmenter = LineSegmenter(general_options=general_options,
                                    segment_options=segment_options.line)
-    n_lines, char_height, labeled_lines = line_segmenter.shred()
+    n_lines, char_height, stroke_width, labeled_lines = line_segmenter.shred()
 
     if general_options.stop_after == 1:
         print("Stopping after line segmentation")
@@ -25,25 +25,26 @@ def main(args):
                                    segment_options=segment_options.character,
                                    n_lines=n_lines,
                                    labeled_lines=labeled_lines,
-                                   char_height=char_height)
+                                   char_height=char_height,
+                                   stroke_width=stroke_width)
     segmenter.segment()
 
     if general_options.stop_after == 2:
-        utils.print_info("Stopping after character segmentation", end="\n")
+        print("Stopping after character segmentation")
         exit()
 
     # Classify characters
     # TODO
 
     if general_options.stop_after == 3:
-        utils.print_info("Stopping after character recognition", end="\n")
+        print("Stopping after character recognition")
         exit()
 
     # Classify style
     # TODO
 
     if general_options.stop_after == 4:
-        utils.print_info("Stopping after style classification", end="\n")
+        print("Stopping after style classification",)
         exit()
 
 
