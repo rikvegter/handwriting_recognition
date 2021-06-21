@@ -1,3 +1,5 @@
+from typing import List
+import numpy as np
 from simple_parsing import ArgumentParser
 
 import utils
@@ -27,7 +29,7 @@ def main(args):
                                    labeled_lines=labeled_lines,
                                    char_height=char_height,
                                    stroke_width=stroke_width)
-    segmenter.segment()
+    segmented_image: List[List[List[np.ndarray]]] = segmenter.segment()
 
     if general_options.stop_after == 2:
         print("Stopping after character segmentation")

@@ -1,12 +1,11 @@
-import ctypes
 import os
+from typing import List
 
 import numpy as np
 import scipy.ndimage as nd
+import scipy.signal as sig
 import utils
 from PIL import Image
-from scipy import LowLevelCallable
-from skimage.morphology import convex_hull_image
 
 # General options (parent directory)
 from options import GeneralOptions
@@ -19,8 +18,13 @@ class CharacterSegmenter:
     """Character segmentation.
     """
     def __init__(self, general_options: GeneralOptions,
-                 segment_options: CharacterSegmentationOptions, n_lines: int,
-                 labeled_lines: np.ndarray, char_height: float) -> None:
+                 segment_options: CharacterSegmentationOptions, 
+                 n_lines: int,
+                 labeled_lines: np.ndarray, 
+                 char_height: float,
+                 stroke_width: int) -> None:
+
+        self.info = utils.StepInfoPrinter(n_lines)
 
         self.debug: bool = general_options.debug
         self.output_path: str = os.path.join(general_options.output_path,
@@ -28,29 +32,32 @@ class CharacterSegmenter:
         self.labeled_lines: np.ndarray = labeled_lines
         self.n_lines: int = n_lines
         self.char_height: float = char_height
+        self.stroke_width: int = stroke_width
 
         if general_options.debug:
             os.makedirs(self.output_path, exist_ok=True)
 
-    def segment(self):
+    def segment(self) -> List[List[List[np.ndarray]]]:
+        """Segments an image in which the lines are labeled into a collection of
+        characters. Characters are grouped by words and lines using lists: this
+        method returns a list of lines, where the lines are lists of words, and
+        where words are lists of characters. They are indexed according to 
+        right-to-left reading, so the first character reading from the right is
+        result[0][0][0].
 
-        #TODO: Make methods return ragged arrays based on this:
-        #      https://tonysyu.github.io/ragged-arrays.html
-        #      Alternatively, pad arrays to a given size and return that
+        Returns:
+            List[List[List[np.ndarray]]]: A list of lines, which are lists of 
+            words, which are lists of characters.
+        """
 
         print("Step 2: Character segmentation")
-        utils.print_info(f"Found {self.n_lines} lines.")
+        self.info.print(f"Found {self.n_lines} lines.", step=False)
+
+        lines = []
 
         for line_no in range(1, self.n_lines + 1):
             line = np.where(self.labeled_lines == line_no, 1,
                             0).astype(np.uint8)
-
-            # 1px erosion to get rid of some noise, followed by dilation to
-            # ‘correct’ for the erosion
-            # TODO fix this, generates weird output
-            # struct = nd.generate_binary_structure(2, 1)
-            # line = nd.binary_erosion(line, struct)
-            # line = nd.binary_dilation(line, struct)
 
             # crop to just the line
             line = self.__crop(line)
@@ -61,11 +68,19 @@ class CharacterSegmenter:
                     os.path.join(self.output_path,
                                  f"l{line_no:02}_before.png"))
 
-            self.__segment_line(line_no, line)
+            lines.append(self.__segment_line(line_no, line))
 
-        utils.print_info("        Done.")
+        self.info.print_done()
 
-    def __segment_line(self, line_no, line):
+        return lines
+
+    def __segment_line(self, line_no: int, line: np.ndarray) -> List[List[np.ndarray]]:
+        """Takes a line and tries to segment it into words.
+
+        Args:
+            line_no (int): The line number
+            line (np.ndarray): The 2d array containing the line
+        """
 
         # flip line horizontally so first char is on the left
         line = np.fliplr(line)
@@ -79,7 +94,9 @@ class CharacterSegmenter:
                 os.path.join(self.output_path, f"l{line_no:02}_deskewed.png"))
 
         # word separation threshold determined using estimated character height
-        word_sep = int(0.12 * self.char_height)
+        word_sep = int(0.05 * self.char_height)
+
+        print("Word sep threshold =", word_sep)
 
         # horizontally dilate for determining word boundaries
         d_struct = np.tile([0, 1, 0], [3, 1]).T
@@ -93,12 +110,15 @@ class CharacterSegmenter:
         # detect (1D) connected components
         words, n_words = nd.label(clipped_line)
 
+        line_words = []
+
         # loop over words
-        for word_i in range(1, n_words + 1):
-            utils.print_info(
-                f"Processing line {line_no:02}/{self.n_lines:02}, word {word_i:02}/{n_words:02}..."
+        for word_no in range(1, n_words + 1):
+            self.info.print(
+                f"Processing line {line_no:02}/{self.n_lines:02}, word {word_no:02}/{n_words:02}...",
+                step=False
             )
-            region_coords = np.argwhere(words == word_i)
+            region_coords = np.argwhere(words == word_no)
             min_x = np.min(region_coords)
             max_x = np.max(region_coords)
 
@@ -112,9 +132,27 @@ class CharacterSegmenter:
 
             word = self.__crop(word_region)
 
-            self.__segment_word(line_no, word_i, word)
+            if self.debug:
+                im = Image.fromarray((word * 255).astype(np.uint8))
+                im.save(
+                    os.path.join(self.output_path,
+                             f"l{line_no:02}_w{word_no:02}.png"))
 
-    def __segment_word(self, line_no: int, word_no: int, word: np.ndarray):
+            word_chars = self.__segment_word(line_no, word_no, word)
+
+            line_words.append(word_chars)
+
+        return line_words
+
+    def __segment_word(self, line_no: int, word_no: int, word: np.ndarray) -> List[np.ndarray]:
+        """Takes a word and tries to segment it into characters.
+
+        Args:
+            line_no (int): The line number
+            word_no (int): The word number
+            word (np.ndarray): The 2d array containing the word
+        """
+        
         # Perform binary closing to smooth edges a bit and close small holes
         word = nd.binary_closing(word)
 
@@ -149,11 +187,112 @@ class CharacterSegmenter:
                 # Combine dilated element with word using logical or
                 new_word = new_word | component
 
+        # close again to connect some loose components
+        new_word = nd.binary_closing(new_word)
+
+        # label ccs
+        ccs, n_ccs = nd.label(new_word)
+
+        ordered_ccs = {}
+
+        # sort ccs by x coordinate of centre
+        for n in range(1, n_ccs + 1):
+            cc = np.where(ccs == n, n, 0)
+            vpp = np.sum(cc, axis=0)
+            nz = np.nonzero(vpp)
+            centre_x = np.mean(nz)
+            ordered_ccs[centre_x] = cc
+
+        new_ccs = [ v for _, v in sorted(ordered_ccs.items()) ]
+
+        chars = []
+
+        for cc in new_ccs:
+            cc = np.where(cc, 1, 0)
+            cc = self.__crop(cc)
+
+            split_char = self.__split_ligature(cc)
+
+            # add array of chars to char array
+            chars += split_char
+
+
         if self.debug:
-            im = Image.fromarray((new_word * 255).astype(np.uint8))
-            im.save(
-                os.path.join(self.output_path,
-                             f"l{line_no:02}_w{word_no:02}.png"))
+            for char_no, char in enumerate(chars):
+                im = Image.fromarray((char * 255).astype(np.uint8))
+                im.save(
+                    os.path.join(self.output_path,
+                             f"l{line_no:02}_w{word_no:02}_c{char_no + 1:02}.png"))
+
+        return chars
+
+
+    def __split_ligature(self, cc: np.ndarray) -> List[np.ndarray]:
+        """Another attempt at splitting ligatures & otherwise connected characters
+
+        Args:
+            cc (np.ndarray): A connected component containing one or more letters
+
+        Returns:
+            List[np.ndarray]: A list of characters extracted from the connected component.
+        """
+
+        # deskew letter(s)
+        cc = self.__deskew(cc)
+
+        # Smooth edges
+        bin_sm = sig.medfilt(cc, 5)
+
+        # calculate euclidean distance transform
+        edt = nd.distance_transform_edt(bin_sm)
+
+        # calculate vertical projection profile of edt
+        vpp = np.sum(edt, axis=0)
+
+        # find valleys
+        valls = sig.argrelextrema(vpp, np.less_equal, order=int(self.stroke_width * 2.5))[0]
+        l = int(len(vpp) * 0.25)
+        r = int(len(vpp) * 0.75)
+        valls = valls[valls > l]
+        valls = valls[valls < r]
+
+        # create mask
+        mask = np.zeros_like(vpp)
+        mask[valls] = 1
+
+        # combine close points
+        mask = nd.binary_closing(mask)
+        val_labs, n_labs = nd.label(mask)
+
+        split_at = []
+
+        for n in range(1, n_labs + 1):
+            # find x coords of adjacent splits
+            region = np.argwhere(val_labs == n)
+
+            if np.count_nonzero(region) > 1:
+                # combine adjacents split points into one point
+                new_split = int(np.mean(region))
+                split_at.append(new_split)
+            else:
+                # if there's only one split point, just return the split point
+                split_at.append(region[0])
+
+        # split image into chars
+        chars = []
+        if len(split_at) > 0:
+            split_at = [0] + split_at + [len(vpp)]
+            for i in range(len(split_at) - 1):
+                split_l = int(split_at[i])
+                split_r = int(split_at[i + 1])
+                char = np.fliplr(bin_sm[:, split_l:split_r])
+                chars.append(char)
+        else:
+            chars = [np.fliplr(bin_sm)]
+
+        return chars
+
+    # Utility functions below
 
     def __crop(self, im: np.ndarray) -> np.ndarray:
         """Crop non-zero regions from a numpy array. Basically the inverse of
@@ -170,6 +309,7 @@ class CharacterSegmenter:
         br = nonzeroes.max(axis=0)
 
         return im[tl[0]:br[0] + 1, tl[1]:br[1] + 1]
+
 
     def __deskew(self, image: np.ndarray) -> np.ndarray:
         """Deskew a line by trying different skews, see which has the most
@@ -212,158 +352,4 @@ class CharacterSegmenter:
 
         return deskewed
 
-    def __segment_pp(self, line_no: int, line: np.ndarray):
-        """Character segmentation by projection profiles
-        """
 
-        # flip line horizontally so first char is on the right
-        line = np.fliplr(line)
-
-        # calculate horizontal projection profile
-        projection_profile = np.sum(line, axis=0)
-        # print(np.unique(projection_profile))
-
-        # set threshold at percentage of max amount of ink
-        # if the pp is below this threshold, cut out a letter
-        threshold_percentage = 0.15
-        threshold_max = np.max(projection_profile)
-        threshold = threshold_percentage * threshold_max
-
-        if threshold_max < 5:
-            # if the line is too low, ignore it
-            return
-
-        clipped_line = np.where(projection_profile >= threshold,
-                                projection_profile, 0)
-
-        labeled_chars, num_chars = nd.label(clipped_line)
-
-        for char_i in range(1, num_chars + 1):
-            region_coords = np.argwhere(labeled_chars == char_i)
-            min_x = np.min(region_coords)
-            max_x = np.max(region_coords)
-            if min_x == max_x:
-                continue
-            char_region = line[:, min_x:max_x]
-            # mirror back again
-            char = np.fliplr(self.__crop(char_region))
-
-            if self.debug:
-                im = Image.fromarray((char * 255).astype(np.uint8))
-                im.save(
-                    os.path.join(self.output_path,
-                                 f"l{line_no:02}_c{char_i:03}.png"))
-
-        pass
-
-    def __segment_cc(self, line_no: int, line: np.ndarray):
-        """Character segmentation by connected components
-        """
-
-        # Prepare for configurable dilation rate
-        dilation_rate = 3
-
-        # flip line horizontally so first char is on the right
-        line = np.fliplr(line)
-
-        # dilate vertically in order to connect broken lines
-        d_struct = np.tile([False, True, False], [3, 1])
-        dilated_line = nd.binary_dilation(line,
-                                          d_struct,
-                                          iterations=dilation_rate)
-
-        # # detect connected components
-        labeled_chars, num_chars = nd.label(dilated_line)
-
-        for char_i in range(1, num_chars + 1):
-            # select the current character
-            dilated_char = np.where(labeled_chars == char_i, 1, 0)
-
-            # calculate convex hull
-            hull = convex_hull_image(dilated_char)
-
-            # use convex hull to select character from original line
-            char = line * hull
-
-            # if width or height is very small, discard character
-            if np.count_nonzero(char) < 20:
-                continue
-            # remove unnecessary zeroes
-            char = self.__crop(char)
-            # flip the character back around
-            char = np.fliplr(char)
-
-            if self.debug:
-                im = Image.fromarray((char * 255).astype(np.uint8))
-                im.save(
-                    os.path.join(self.output_path,
-                                 f"l{line_no:02}_c{char_i:03}.png"))
-
-        pass
-
-    def __thin(self, line_no: int, line: np.ndarray):
-        """Skeletonization based on Zhang & Suen (1984), doi: 10/c93zqs 
-
-        Method inspired by
-        https://rosettacode.org/wiki/Zhang-Suen_thinning_algorithm
-
-        Note: currently applied per line, but could be (a bit) faster when
-        applied on the entire image first. This could basically be done with
-        something like
-
-        Note 2: This doesn't work as it is supposed to.
-
-        >>> lines # labeled lines 
-        >>> binary_lines = np.where(lines, 1, 0) 
-        >>> thinned = self.__thin(binary_lines) 
-        >>> thinned_lines = thinned * lines
-        """
-
-        if self.debug:
-            im = Image.fromarray((line * 255).astype(np.uint8))
-            im.save(
-                os.path.join(self.output_path,
-                             f"l{line_no}_before_thinning.png"))
-
-        # define c libs for ndimage general filter
-        clib = ctypes.cdll.LoadLibrary("./thinning.so")
-
-        # step one of the algorithm
-        clib.StepOne.argtypes = (ctypes.POINTER(
-            ctypes.c_double), ctypes.c_long, ctypes.POINTER(ctypes.c_double),
-                                 ctypes.c_void_p)
-        step_one = LowLevelCallable(clib.StepOne)
-
-        # step 2 of the algorithm
-        clib.StepTwo.argtypes = (ctypes.POINTER(
-            ctypes.c_double), ctypes.c_long, ctypes.POINTER(ctypes.c_double),
-                                 ctypes.c_void_p)
-        step_two = LowLevelCallable(clib.StepTwo)
-
-        # If any pixels were set in this round of either step 1 or step 2 then
-        # all steps are repeated until no image pixels are changed anymore.
-        hasChanged = True
-        current = line
-        iterations = 0
-        max_iterations = 20
-        while (hasChanged and iterations < max_iterations):
-            s1 = nd.generic_filter(current,
-                                   step_one,
-                                   size=(3, 3),
-                                   mode="constant",
-                                   cval=0)
-            s2 = nd.generic_filter(s1,
-                                   step_two,
-                                   size=(3, 3),
-                                   mode="constant",
-                                   cval=0)
-
-            hasChanged = not np.array_equal(s2, current)
-            current = s2
-            iterations += 1
-
-        if self.debug:
-            im = Image.fromarray((current * 255).astype(np.uint8))
-            im.save(os.path.join(self.output_path, f"l{line_no}_skeleton.png"))
-
-        return current
