@@ -117,7 +117,6 @@ class LineSegmenter:
                                                labeled_line_areas)
 
         self.info.print_done()
-        print("stroke width:", self.stroke_width, " letter height:", self.letter_height)
 
         return n_lines, self.letter_height, self.stroke_width, result_final
 
