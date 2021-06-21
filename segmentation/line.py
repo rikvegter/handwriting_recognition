@@ -5,6 +5,7 @@ from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.lib.function_base import percentile
 from scipy.stats.stats import mode
 from skimage.transform.hough_transform import hough_line, hough_line_peaks
 import utils
@@ -31,9 +32,11 @@ class LineSegmenter:
             output_path (str, optional): Where to save debug images to. Defaults
             to "./".
         """
-        # Set debug settings
+        self.info = utils.StepInfoPrinter(14)
+
         print("Step 1: Line segmentation")
-        utils.print_info("(01/13) Setting up...")
+        self.info.print("Setting up...")
+        # Set debug settings
         self.debug = general_options.debug
         self.output_path = general_options.output_path
         self.im_counter = 0  # for labeling image order
@@ -42,25 +45,30 @@ class LineSegmenter:
 
         # Open the image, convert it to a numpy array and make sure it is binary
         # Also check if the baseline is rotated, and if so, rotate it back
-        utils.print_info("(02/13) Straightening baseline...")
+        self.info.print("Straightening baseline...")
         self.image: np.ndarray = self.__prepare_image(
             general_options.input_path)
 
         # 2.1 Preprocessing
 
         # Label the connected components
-        utils.print_info("(03/13) Labeling connected components...")
+        self.info.print("Labeling connected components...")
         self.components, self.n_components = ndimage.label(self.image)
 
-        # Find the letter height and define the blurring window
-        utils.print_info("(04/13) Finding letter height...")
-        self.letter_height: float = self.__find_letter_height()
+        # Also find stroke width
+        self.info.print("Finding stroke width...")
+        self.stroke_width: int = self.__find_stroke_width()
 
-        utils.print_info("(05/13) Despeckling...")
+        # Despeckle before finding letter height
+        self.info.print("Despeckling...")
         self.__despeckle()
 
+        # Find the letter height and define the blurring window
+        self.info.print("Finding letter height...")
+        self.letter_height: float = self.__find_letter_height()
+
         # Blur the image (B(x, y))
-        utils.print_info("(06/13) Blurring image...")
+        self.info.print("Blurring image...")
         self.blur_width: int = (self.letter_height * 6.0).astype(int)
         self.blur_height: int = (self.letter_height * 0.8).astype(int)
         self.blurred_image = self.__blur_image()
@@ -74,29 +82,29 @@ class LineSegmenter:
         """
 
         # 2.2.1 Tracing line areas (LA(x, y))
-        utils.print_info("(07/13) Generating white path traces...")
+        self.info.print("Generating white path traces...")
         line_areas = self.__generate_traces()
 
         # 2.2.2 Labeling line areas (LLA(x, y))
-        utils.print_info("(08/13) Labeling line areas...")
+        self.info.print("Labeling line areas...")
         n_lines, labeled_line_areas = self.__get_lla(line_areas)
 
         # 2.2.3 Tracing line centers (LC(x, y))
-        utils.print_info("(09/13) Generating black path traces...")
+        self.info.print("Generating black path traces...")
         line_centers = self.__generate_traces(invert=True)
 
         # 2.2.4 Labeling line centers
-        utils.print_info("(10/13) Labeling line centers...")
+        self.info.print("Labeling line centers...")
         labeled_line_centers = self.__get_llc(labeled_line_areas, line_centers,
                                               n_lines)
 
         # 2.3.1 Assigning to line centers
-        utils.print_info("(11/13) Assigning characters to line, pass 1...")
+        self.info.print("Assigning characters to line, pass 1...")
         result_line_centers = self.__separate_lines(n_lines,
                                                     labeled_line_centers)
 
         # 2.3.2 Assigning to line areas
-        utils.print_info("(12/13) Assigning characters to line, pass 2...")
+        self.info.print("Assigning characters to line, pass 2...")
         result_line_areas = self.__separate_lines(n_lines, labeled_line_areas)
 
         # The original paper adds the results from 2.3.2 directly to RES(x,y),
@@ -104,13 +112,14 @@ class LineSegmenter:
         intermediate_result = result_line_areas + result_line_centers
 
         # 2.3.3 Assigning remaining pixels
-        utils.print_info("(13/13) Assigning remaining pixels...")
+        self.info.print("Assigning remaining pixels...")
         result_final = self.__assign_remaining(n_lines, intermediate_result,
                                                labeled_line_areas)
 
-        utils.print_info("        Done.", end='\n')
+        self.info.print_done()
+        print("stroke width:", self.stroke_width, " letter height:", self.letter_height)
 
-        return n_lines, self.letter_height, result_final
+        return n_lines, self.letter_height, self.stroke_width, result_final
 
     def __prepare_image(self, image_path: str) -> np.ndarray:
         # Prepare the image
@@ -157,8 +166,35 @@ class LineSegmenter:
             heights[i] = height
 
         # TODO: check for distribution skew by also calculating median and using
-        # that if the skew is too large
+        # that if the skew is too large (maybe)
         return np.mean(heights)
+
+    def __find_stroke_width(self) -> int:
+        """Finds the stroke width by continuously eroding the image until the
+        less than 20% of the originally white pixels remain. The number of 
+        iterations of erosions times two is taken as the stroke width.
+
+        Returns:
+            int: The estimated stroke width
+        """
+
+        struct = ndimage.generate_binary_structure(2, 1)
+
+        im_copy = np.copy(self.image)
+
+        white_pixels_initial = np.sum(im_copy)
+
+        percentage_left = 100
+
+        iterations = 0
+
+        while percentage_left > 20:
+            iterations += 1
+            im_copy = ndimage.binary_erosion(im_copy, struct)
+            n_white_pixels_left = np.sum(im_copy)
+            percentage_left = n_white_pixels_left / white_pixels_initial * 100
+
+        return iterations * 2
 
     def __blur_image(self) -> np.ndarray:
         """Blurs the image with the given blur window.
@@ -477,26 +513,35 @@ class LineSegmenter:
     def __despeckle(self):
         """Connected components based despeckling"""
 
-        # Determine speckle size as function of letter height
-        speckle_size = self.letter_height * 0.3
+        # Determine speckle size as function of stroke width
+        speckle_size = self.stroke_width
 
         component_labels = np.arange(1, self.n_components + 1)
 
         # Check the size of all components and create an array indicating which
-        # components should be discarded based on their index (1-indexed)
-        to_discard = ndimage.labeled_comprehension(
+        # components should be kept based on their index (1-indexed)
+        to_keep = ndimage.labeled_comprehension(
             self.image, self.components, component_labels,
-            lambda v: np.sum(v) <= speckle_size**2, bool, False)
+            lambda v: np.sum(v) > speckle_size**2, bool, False)
 
-        labels_to_discard = component_labels[to_discard]
+        labels_to_keep = component_labels[to_keep]
 
-        # Remove speckles from the image and the list of components
-        self.image = np.where(
-            np.isin(self.components, labels_to_discard, invert=True),
-            self.image, 0)
-        self.components = np.where(
-            np.isin(self.components, labels_to_discard, invert=True),
-            self.components, 0)
+        # map replacements
+        replacements = { l : (i + 1 if l in labels_to_keep else 0) for i, l in enumerate(labels_to_keep) }
+
+        new_components = np.copy(self.components)
+        # remove unnecessary components
+        new_components = np.where(np.isin(new_components, labels_to_keep), new_components, 0)
+        # relabel components
+        for k,v in replacements.items():
+            new_components[self.components == k] = v
+
+        # update image
+        self.image = np.where(new_components, 1, 0)
+        # update components
+        self.components = new_components
+        # update n components
+        self.n_components = len(labels_to_keep)
 
         if self.debug:
             output = Image.fromarray((self.image * 255).astype(np.uint8))
