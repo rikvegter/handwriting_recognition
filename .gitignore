@@ -128,6 +128,14 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+
+# Project-specific settings
+data/
+*.png
+*.pgm
+*.zip
+*.tar.gz
+
 # Mac stuff
 .DS_Store
 
