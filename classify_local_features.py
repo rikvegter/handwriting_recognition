@@ -8,23 +8,23 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import cross_val_score, KFold
 
 KFOLD = 5
-DROP_PC_COMPONENTS_FROM = 20
 
-def drop_column_names(drop_pc_components_from):
+DROP_PC_COMPONENTS_UNTIL = 25
+
+def drop_column_names(drop_pc_components_from, drop_pc_components_until):
     components = []
-    for i in range(drop_pc_components_from, 21):
+    for i in range(drop_pc_components_from, drop_pc_components_until):
         component = 'pc' + str(i)
         components.append(component)
     return components
 
-def main():
+def main(pc_components):
     #df = pd.read_pickle('local_features.pkl')
     df = pd.read_pickle('pca_components_features.pkl')
 
 
-    #columns_to_drop = drop_column_names(DROP_PC_COMPONENTS_FROM)
-    #df = df.drop(columns=columns_to_drop)
-
+    columns_to_drop = drop_column_names(pc_components + 1, DROP_PC_COMPONENTS_UNTIL + 1)
+    df = df.drop(columns=columns_to_drop)
     X = df.drop(columns = ['label'])
     y = df['label']
 
@@ -41,9 +41,9 @@ def main():
     #####################################################$#
 
     #Create classifier
-    clf = RandomForestClassifier(random_state=42, n_estimators = 10, criterion = 'entropy')
+    #clf = RandomForestClassifier(random_state=42, n_estimators = 80, criterion = 'entropy')
     #clf = svm.SVC(kernel = 'rbf')
-    #clf = KNeighborsClassifier(n_neighbors = 7)
+    clf = KNeighborsClassifier(n_neighbors = 5)
 
     #USE K-fold cross validation to get the accuracy
     kf = KFold(n_splits = KFOLD, shuffle = True, random_state = 42)
@@ -58,5 +58,24 @@ def main():
     y_true = y_train
     y_pred = clf.predict(X_train)
     print('training accuracy = ', accuracy_score(y_true, y_pred))
+
+    #return kf-accuracy
+    train_acc = accuracy_score(y_true, y_pred)
+    test_acc = k_fold_accuracy
+    return train_acc, test_acc
 if __name__ == "__main__":
-    main()
+
+    pc_components = 33
+    test_accuracies = []
+    train_accuracies = []
+    main(25)
+    '''
+    for i in range(2,pc_components):
+        train_acc, test_acc = main(i)
+        test_accuracies.append([test_acc, i])
+        train_accuracies.append([train_acc, i])
+    '''
+    import pdb; pdb.set_trace()
+
+
+    #main()

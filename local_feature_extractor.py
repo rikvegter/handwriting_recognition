@@ -33,10 +33,12 @@ def put_profile_in_middle(vert_profile):
     top_0 = 0
     bot_0 = 0
 
+    #Find the highest ink row
     for i in range(0, len(vert_profile)):
         if vert_profile[i] >= INK_THRESHOLD: break
         top_0 += 1
 
+    #Find the lowest ink row
     for index, item in reverse_enum(vert_profile):
         if item >= INK_THRESHOLD: break
         bot_0 += 1
@@ -161,7 +163,7 @@ def main():
             local_features = {'height': height, 'label': letter, 'width': width}
             local_features_series = pd.Series(local_features)
             series_to_add = local_features_series.append(profile_series)
-            
+
 
             #append the PD series to the dataframe
             df = df.append(series_to_add, ignore_index = True)

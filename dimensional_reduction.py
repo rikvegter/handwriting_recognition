@@ -4,7 +4,7 @@ from sklearn.decomposition import PCA
 import random
 import matplotlib.pyplot as plt
 
-PCA_COMPONENTS = 20
+PCA_COMPONENTS = 35
 def get_random_colors(num_of_colors):
     colors = []
     for i in range(0, num_of_colors):
