@@ -73,12 +73,12 @@ class LineSegmenter:
         self.blur_height: int = (self.letter_height * 0.8).astype(int)
         self.blurred_image = self.__blur_image()
 
-    def shred(self) -> Tuple[int, float, np.ndarray]:
+    def shred(self) -> Tuple[int, float, int, np.ndarray]:
         """Labels all connected components in an image as belonging to a line.
 
         Returns:
-            Tuple[int, float, np.ndarray]: A 3-tuple containing the number of 
-            lines, the estimated letter height and the labeled image.
+            Tuple[int, float, int, np.ndarray]: A 4-tuple containing the number of
+            lines, the estimated letter height, stroke-width, and the labeled image.
         """
 
         # 2.2.1 Tracing line areas (LA(x, y))
@@ -123,20 +123,20 @@ class LineSegmenter:
     def __prepare_image(self, image_path: str) -> np.ndarray:
         # Prepare the image
         image = Image.open(image_path)
-        
+
         # Make sure we're in grayscale
         image = ImageOps.grayscale(image)
-        
+
         # Convert to numpy array
         image = np.asarray(image)
-        
+
         # Convert to binary; 255 is white, 0 is black.
         # We want ones where the image is black
         image = np.where(image < 127, 1, 0)
-        
+
         # Detect and correct possible baseline rotation using hough transform
         image = self.__straighten(image)
-        
+
         # Flip the image horizontally so beginning of line is at the left (i.e.
         # closer to 0)
         image = np.fliplr(image)
@@ -170,7 +170,7 @@ class LineSegmenter:
 
     def __find_stroke_width(self) -> int:
         """Finds the stroke width by continuously eroding the image until the
-        less than 20% of the originally white pixels remain. The number of 
+        less than 20% of the originally white pixels remain. The number of
         iterations of erosions times two is taken as the stroke width.
 
         Returns:
@@ -481,7 +481,7 @@ class LineSegmenter:
         return final_image
 
     def __straighten(self, image: np.ndarray) -> np.ndarray:
-        """Straighten the image so the baselines of the text are as horizontal 
+        """Straighten the image so the baselines of the text are as horizontal
         as possible.
 
         Args:
