@@ -12,7 +12,7 @@ from sklearn.metrics import accuracy_score
 from scipy.ndimage.interpolation import shift
 
 N_FOLDS = 5
-data_dir = 'data/monkbrill'
+data_dir = 'monkbrill'
 WIDTH_IMAGE = 80
 HEIGHT_IMAGE = 80
 INK_THRESHOLD = 20

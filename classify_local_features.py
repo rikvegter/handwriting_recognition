@@ -6,7 +6,7 @@ from sklearn.metrics import accuracy_score
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import cross_val_score, KFold
-
+import pickle
 KFOLD = 5
 
 DROP_PC_COMPONENTS_UNTIL = 25
@@ -19,9 +19,8 @@ def drop_column_names(drop_pc_components_from, drop_pc_components_until):
     return components
 
 def main(pc_components):
-    #df = pd.read_pickle('local_features.pkl')
-    df = pd.read_pickle('pca_components_features.pkl')
-
+    df = pd.read_pickle('local_features.pkl')
+    #df = pd.read_pickle('pca_components_features.pkl')
 
     columns_to_drop = drop_column_names(pc_components + 1, DROP_PC_COMPONENTS_UNTIL + 1)
     df = df.drop(columns=columns_to_drop)
@@ -41,9 +40,9 @@ def main(pc_components):
     #####################################################$#
 
     #Create classifier
-    #clf = RandomForestClassifier(random_state=42, n_estimators = 80, criterion = 'entropy')
+    clf = RandomForestClassifier(random_state=42, n_estimators = 120, criterion = 'entropy')
     #clf = svm.SVC(kernel = 'rbf')
-    clf = KNeighborsClassifier(n_neighbors = 5)
+    #clf = KNeighborsClassifier(n_neighbors = 5)
 
     #USE K-fold cross validation to get the accuracy
     kf = KFold(n_splits = KFOLD, shuffle = True, random_state = 42)
@@ -62,6 +61,11 @@ def main(pc_components):
     #return kf-accuracy
     train_acc = accuracy_score(y_true, y_pred)
     test_acc = k_fold_accuracy
+
+    pkl_filename = 'pickle_model.pkl'
+    with open(pkl_filename, 'wb') as file:
+        pickle.dump(clf, file)
+
     return train_acc, test_acc
 if __name__ == "__main__":
 
