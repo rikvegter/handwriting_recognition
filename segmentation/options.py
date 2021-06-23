@@ -1,19 +1,22 @@
 from dataclasses import dataclass
+from simple_parsing import field
+from simple_parsing.helpers.fields import choice
 
 
 @dataclass
 class LineSegmentationOptions:
     """Parameters for line segmentation"""
 
-    option1: str
+    # No options yet
+    empty: str = ""
 
 
 @dataclass
 class CharacterSegmentationOptions:
     """Parameters for character segmentation"""
 
-    option2: str
-    pass
+    # No options yet
+    empty: str = ""
 
 
 @dataclass
@@ -21,7 +24,6 @@ class SegmentationOptions:
     """Parameters for the different segmentation steps
     """
 
-    line: LineSegmentationOptions = LineSegmentationOptions(option1="a")
+    line: LineSegmentationOptions = LineSegmentationOptions()
 
-    character: CharacterSegmentationOptions = CharacterSegmentationOptions(
-        option2="b")
+    character: CharacterSegmentationOptions = CharacterSegmentationOptions()

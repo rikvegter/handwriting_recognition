@@ -1,27 +1,53 @@
-import os
-from dataclasses import dataclass
+from typing import List
+import numpy as np
+from simple_parsing import ArgumentParser
 
-from simple_parsing import ArgumentParser, field
-from simple_parsing.helpers.fields import flag
+import utils
+from options import GeneralOptions
+from segmentation.character import CharacterSegmenter
+from segmentation.line import LineSegmenter
 from segmentation.options import SegmentationOptions
 
-def main():
-    pass
 
+def main(args):
+    general_options: GeneralOptions = args.general
+    segment_options: SegmentationOptions = args.segmentation
 
-@dataclass
-class General:
-    """General options for the tool"""
+    # Segment lines
+    line_segmenter = LineSegmenter(general_options=general_options,
+                                   segment_options=segment_options.line)
+    n_lines, char_height, stroke_width, labeled_lines = line_segmenter.shred()
 
-    # The path of the image to process
-    input_path: str = field(alias="-i")
+    if general_options.stop_after == 1:
+        print("Stopping after line segmentation")
+        exit()
 
-    # The path to save output to
-    output_path: str = field(default="./", alias="-o")
+    # Segment characters
+    segmenter = CharacterSegmenter(general_options=general_options,
+                                   segment_options=segment_options.character,
+                                   n_lines=n_lines,
+                                   labeled_lines=labeled_lines,
+                                   char_height=char_height,
+                                   stroke_width=stroke_width)
+    segmented_image: List[List[List[np.ndarray]]] = segmenter.segment()
 
-    # Save the results of intermediate steps to a debug directory in the output
-    # path
-    debug: bool = flag(default=False, alias="-d")
+    if general_options.stop_after == 2:
+        print("Stopping after character segmentation")
+        exit()
+
+    # Classify characters
+    # TODO
+
+    if general_options.stop_after == 3:
+        print("Stopping after character recognition")
+        exit()
+
+    # Classify style
+    # TODO
+
+    if general_options.stop_after == 4:
+        print("Stopping after style classification",)
+        exit()
 
 
 if __name__ == "__main__":
@@ -29,11 +55,11 @@ if __name__ == "__main__":
     parser = ArgumentParser()
 
     # Add general options
-    parser.add_arguments(General, dest="general_options")
+    parser.add_arguments(GeneralOptions, dest="general")
 
     # Add segmentation options
-    parser.add_arguments(SegmentationOptions, dest="segmentation_options")
+    parser.add_arguments(SegmentationOptions, dest="segmentation")
 
     args = parser.parse_args()
 
-    main()
+    main(args)
