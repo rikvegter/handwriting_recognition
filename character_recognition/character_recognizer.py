@@ -29,6 +29,34 @@ LABELS: List[str] = ['Alef', 'Bet', 'Gimel', 'Dalet', 'He', 'Waw', 'Zayin', 'Het
                      'Lamed', 'Mem-medial', 'Mem', 'Nun-medial', 'Nun-final', 'Samekh', 'Ayin', 'Pe', 'Pe-final',
                      'Tsadi-medial', 'Tsadi-final', 'Qof', 'Resh', 'Shin', 'Taw']
 
+# 0 = Alef
+# 1 = Bet
+# 2 = Gimel
+# 3 = Dalet
+# 4 = He
+# 5 = Waw
+# 6 = Zayin
+# 7 = Het
+# 8 = Tet
+# 9 = Yod
+# 10 = Kaf
+# 11 = Kaf-final
+# 12 = Lamed
+# 13 = Mem-medial
+# 14 = Mem
+# 15 = Nun-medial
+# 16 = Nun-final
+# 17 = Samekh
+# 18 = Ayin
+# 19 = Pe
+# 20 = Pe-final
+# 21 = Tsadi-medial
+# 22 = Tsadi-final
+# 23 = Qof
+# 24 = Resh
+# 25 = Shin
+# 26 = Taw
+
 IMG_WIDTH: int = 64
 IMG_HEIGHT: int = 64
 
@@ -190,11 +218,12 @@ def get_kfold_data(data_dir: str, fold: int, labels: List[str]) -> [tf.data.Data
     return train_ds, test_ds, validate_ds
 
 
-def get_model(labels: List[str]) -> tf.keras.Sequential:
+def get_model(labels: List[str], use_data_augmentation_layers: bool) -> tf.keras.Sequential:
     """
     Constructs a new model.
 
     :param labels: The labels to classify.
+    :param use_data_augmentation_layers: Whether to add the data augmentation layers (will only be used during training).
     :return: The newly-created model.
     """
     input_shape: Tuple[int, int, int] = (IMG_HEIGHT, IMG_WIDTH, 3)
@@ -202,7 +231,7 @@ def get_model(labels: List[str]) -> tf.keras.Sequential:
     model: tf.keras.Sequential = tf.keras.Sequential()
     model.add(layers.Input(shape=input_shape))
     model.add(preprocessing.Rescaling(1. / 255))
-    if DATA_AUGMENTATION_LAYERS:
+    if use_data_augmentation_layers:
         model.add(preprocessing.RandomRotation(factor=(1 / 36)))  # +/- 1/36 * 2pi rad (10 deg)
         model.add(preprocessing.RandomZoom(height_factor=0.2))
 
@@ -345,7 +374,7 @@ def train_model(data_dir: str, model_output_path: Optional[str] = None, results_
     outputs: List[float] = []
     for fold in range(N_FOLDS):
         train, test, val = get_kfold_data(data_dir, fold, labels)
-        model: tf.keras.Sequential = get_model(labels)
+        model: tf.keras.Sequential = get_model(labels, DATA_AUGMENTATION_LAYERS)
         outputs.append(run_model(model, train, test, val, labels, "{}/model_{}/".format(model_output_path, fold)))
 
     output: str = f'Average test accuracy: {sum(outputs) / len(outputs):.2%}\nIndividual test accuracies: {outputs}'

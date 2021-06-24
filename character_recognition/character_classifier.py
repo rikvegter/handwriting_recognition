@@ -1,6 +1,7 @@
 import os.path
 from typing import Union, List
 
+import PIL.Image
 import numpy as np
 import tensorflow as tf
 from PIL import Image
@@ -20,7 +21,6 @@ class CharacterClassifier:
     """
     Represents a class that can be used to classify images of ancient hebrew characters.
     """
-
     def __init__(self, model_path: str = DEFAULT_MODEL):
         """
         :param model_path: The path to the directory containing the weights of the model to use for classification.
@@ -30,7 +30,7 @@ class CharacterClassifier:
 
     def __load_model(self, model_path: str) -> tf.keras.models.Model:
         assert os.path.isdir(model_path)
-        model: tf.keras.models.Model = character_recognizer.get_model(LABELS)
+        model: tf.keras.models.Model = character_recognizer.get_model(LABELS, False)
         model.load_weights(model_path).expect_partial()
         return model
 
@@ -52,9 +52,8 @@ class CharacterClassifier:
         if isinstance(image_data, str):
             image_data: Union[np.ndarray, Image.Image] = Image.open(image_data)
 
-        image: np.ndarray = preprocess_images.preprocess_image(image_data)
-        if not is_inverted:
-            image: np.ndarray = 255 - image
+        image: np.ndarray = preprocess_images.preprocess_image(image_data, is_inverted)
+        image: np.ndarray = 255 - image
         image: np.ndarray = np.repeat(image[..., np.newaxis], 3, -1)
         return image.astype(dtype=np.uint8)
 
