@@ -2,11 +2,11 @@ from typing import List
 import numpy as np
 from simple_parsing import ArgumentParser
 
-import utils
 from options import GeneralOptions
 from segmentation.character import CharacterSegmenter
 from segmentation.line import LineSegmenter
 from segmentation.options import SegmentationOptions
+from word_recognition.word_classifier import WordClassifier
 
 
 def main(args):
@@ -30,13 +30,15 @@ def main(args):
                                    char_height=char_height,
                                    stroke_width=stroke_width)
     segmented_image: List[List[List[np.ndarray]]] = segmenter.segment()
+    segmented_image.reverse()  # Reverse the lines so it goes from top to bottom
 
     if general_options.stop_after == 2:
         print("Stopping after character segmentation")
         exit()
 
     # Classify characters
-    # TODO
+    word_classifier = WordClassifier(character_classifier="character_recognition/data/classification_model/")
+    classified_lines: List[List[List[int]]] = word_classifier.classify_lines(segmented_image, True)
 
     if general_options.stop_after == 3:
         print("Stopping after character recognition")
