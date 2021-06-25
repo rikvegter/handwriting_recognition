@@ -7,9 +7,13 @@ from character_recognition.character_classifier import CharacterClassifier
 
 
 class WordClassifier:
-    def __init__(self, character_classifier: CharacterClassifier):
-        self.character_classifier = character_classifier
-        assert self.character_classifier is not None
+    def __init__(self, character_classifier: Union[str, CharacterClassifier]):
+        if isinstance(character_classifier, CharacterClassifier):
+            self.character_classifier = character_classifier
+        elif isinstance(character_classifier, str):
+            self.character_classifier = CharacterClassifier(character_classifier)
+        else:
+            raise ValueError("Unexpected input for character classifier!")
 
     def classify_word(self, word: Union[List[Union[np.ndarray, Image.Image, str]], np.ndarray],
                       is_inverted: bool = False) -> List[int]:
@@ -46,4 +50,17 @@ class WordClassifier:
         ret: List[List[int]] = []
         for word in words:
             ret.append(self.classify_word(word, is_inverted))
+        return ret
+
+    def classify_lines(self, lines: List[List[Union[List[Union[np.ndarray, Image.Image, str]], np.ndarray]]],
+                       is_inverted: bool = False) -> List[List[List[int]]]:
+        """
+        Classifies one or more lines with one or more words each.
+
+        See the classify_words method for more information.
+        :return: The classified characters per word per line.
+        """
+        ret: List[List[List[int]]] = []
+        for line in lines:
+            ret.append(self.classify_words(line, is_inverted))
         return ret

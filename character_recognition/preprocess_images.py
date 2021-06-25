@@ -2,8 +2,8 @@ import os
 import sys
 from typing import Union
 
-from PIL import Image
 import numpy as np
+from PIL import Image
 
 DEFAULT_INPUT_DIRECTORY: str = "data/dataset"
 OUTPUT_HEIGHT: int = 64
@@ -126,25 +126,41 @@ def scale_image(image_array: np.ndarray, height: int, width: int) -> np.ndarray:
     return np.asarray(image, dtype=np.uint8)
 
 
-def preprocess_image(image_data: Union[np.ndarray, Image.Image], output_height: int = OUTPUT_HEIGHT,
+def __normalize_array(image_data: np.ndarray) -> np.ndarray:
+    min_val: int = np.min(image_data)
+    if min_val < 0:
+        image_data -= min_val
+
+    max_val: int = np.max(image_data)
+    div: int = max_val if max_val != 0 else 1
+    multiplier: float = 255 / div
+
+    image_data = np.multiply(image_data, multiplier, casting="unsafe")
+    return image_data.astype(dtype=np.uint8, casting="unsafe")
+
+
+def preprocess_image(image_data: Union[np.ndarray, Image.Image], is_inverted: bool, output_height: int = OUTPUT_HEIGHT,
                      output_width: int = OUTPUT_WIDTH, extra_padding: int = EXTRA_PADDING) -> np.ndarray:
     if isinstance(image_data, Image.Image):
         image: Image.Image = image_data
         if image.mode != "L":
             image: Image.Image = image.convert(mode="L")
     elif isinstance(image_data, np.ndarray):
-        image: Image = Image.fromarray(image_data, mode="L")
+        image: Image = Image.fromarray(__normalize_array(image_data), mode="L")
     else:
         raise ValueError("Type {} is not a supported image type! Please use only Pil.Image.Image or np.ndarray!"
                          .format(type(image_data)))
 
-    # noinspection PyTypeChecker
     image_np: np.ndarray = np.asarray(image, dtype=np.uint8)
-    trimmed: np.ndarray = trim_image(image_np)
-    scaled: np.ndarray = scale_image(trimmed, output_height - extra_padding, output_width - extra_padding)
-    padded: np.ndarray = pad_image(scaled, output_height, output_width)
+    if is_inverted:
+        image_np: np.ndarray = 255 - image_np
 
-    return padded
+    if np.max(image_np) != np.min(image_np):
+        image_np: np.ndarray = trim_image(image_np)
+    image_np: np.ndarray = scale_image(image_np, output_height - extra_padding, output_width - extra_padding)
+    image_np: np.ndarray = pad_image(image_np, output_height, output_width)
+
+    return image_np
 
 
 def preprocess_files(data_dir: str, output_height: int, output_width: int, extra_padding: int) -> None:
