@@ -2,12 +2,15 @@ import xarray as xr
 import numpy as np
 import argparse
 import os
-import fdasrsf.curve_functions as curve_functions
+#import fdasrsf.curve_functions as curve_functions
 import tqdm
 import umap
 #import umap.plot
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder
+
+from sklearn import preprocessing
+
 def check_dir(string):
     """ Check if path exists
     """
@@ -26,7 +29,7 @@ def make_dir(string):
 def read_fraglets(workdir, args):
     fraglet_path = os.path.join(workdir, 'fraglets.nc')
     print('Reading fraglets images from {}'.format(fraglet_path))
-    fraglet_data = xr.open_dataset(fraglet_path)
+    fraglet_data = xr.load_dataset(fraglet_path)
     print('Read {} fraglets.'.format(len(fraglet_data.fraglet_id)))
     # Filter fraglets
     fraglet_data = fraglet_data.where(fraglet_data.area >= args.min_area, drop=True)
@@ -45,6 +48,38 @@ def normalize_fraglets(fraglet_ds):
         normlized_contours[i] = beta.T
     fraglet_ds['contour_norm'] = normlized_contours
 
+# def get_srvf(fraglet_ds):
+#     """ Normalize fraglets in the dataset. 
+#     """
+#     normlized_contours = xr.zeros_like(fraglet_ds.contour)
+#     for i in tqdm.trange(len(fraglet_ds.fraglet_id), desc='Computing square root velocity function'):
+#         beta, q, T = curve_functions.pre_proc_curve(fraglet_ds.contour[i].values.T)
+#         normlized_contours[i] = q.T
+#     fraglet_ds['srvf'] = normlized_contours
+
+    
+def normalize_fraglets_simple(fraglet_ds):
+    """ Normalize fraglets in the dataset. 
+    
+    Normalize by:
+      - Subtracting mean
+      - 
+    """
+    normlized_contours = xr.zeros_like(fraglet_ds.contour)
+    sqare_root_velocity = xr.zeros_like(fraglet_ds.contour)
+    normlized_contours.values[:,:,0] = preprocessing.scale(
+        fraglet_ds.contour.values[:,:,0],
+        axis=1
+    )
+    normlized_contours.values[:,:,1] = preprocessing.scale(
+        fraglet_ds.contour.values[:,:,1],
+        axis=1
+    )
+    sqare_root_velocity.values[:] = np.gradient(normlized_contours.values, axis = 1)
+    sqare_root_velocity.values[:] /= np.sqrt(np.linalg.norm(sqare_root_velocity.values, axis = 2))[:,:,np.newaxis]
+    
+    fraglet_ds['contour_norm'] = normlized_contours
+    fraglet_ds['square_root_velocity'] = sqare_root_velocity
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Classify fragment style based on labeled fraglets and fragment fraglets')

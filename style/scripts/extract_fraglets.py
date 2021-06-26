@@ -16,8 +16,8 @@ from scipy import ndimage
 from skimage.measure import find_contours
 from sklearn.utils import Bunch
 from scipy.ndimage.filters import maximum_filter1d
-from scipy.ndimage import gaussian_filter1d
-from scipy.interpolate import interp1d
+from scipy.ndimage import gaussian_filter1d, gaussian_filter
+from scipy.interpolate import interp1d, griddata
 from scipy.signal import find_peaks
 
 from xarray_dataclasses import Attr, Coord, Data, datasetclass
@@ -434,6 +434,7 @@ def split_contour_vertical(cc, line_gaps, min_curve_length = 150, show_vertical 
         plt.legend()
         plt.show()
     return split_contours
+
 def reduce_angle(a):
     """ Shift angle by multiples of 2*pi until it fals in the range (-pi,pi)
     """
@@ -480,6 +481,98 @@ class hinge_interpolator(object):
         """
         tau = self.tau[idx]
         return self.angle(tau, delta_tau)
+def augment_contour(contour, elastic_displacement = 40., elastic_distance = 40., grid_delta = 25., rot_sigma = 10, shear_sigma = 0.1):
+    """ Augment the contour by a random affine transformation followed by an elastic morph
+    
+    Elastic morph is performed by computing a displacement field consisting of spatially correlated 
+    Gaussian noise, where elastic_displacement gives the standard deviation in any point, and 
+    elastic_distance gives the distance along which points are correlated. Displacement is computed
+    on a 2D grid with points that are grid_delta apart, then interpolated with a cubic spline. 
+    
+    This can in some cases lead to transformations that are not bijective, especially if the elastic
+    displacement is larger than the elastic distance, which can be problematic
+    
+    Parameters
+    ----------
+    contour : N X 2 array of float
+        The contour that should be augmented
+    elastic_displacement : float
+        Amplitude of the displacement in any given point, 
+    elastic_distance : float
+        Displacement will be spatially correlated with this distance
+    grid_delta : float
+        The distance between points of the interpolation grid in any dimension
+    rot_sigma : float
+        Standard deviation of rotation angle in degrees
+    shear_sigma : float
+        Standard deviation of the shear factor
+    Returns
+    -------
+    N X 2 array of float
+        The augmented contour
+    We must make sure that the properties of the augmentation don't depend on the size of the 
+    contour. 
+    """
+    c_mean = np.mean(contour, axis=0)
+    contour = contour - c_mean[np.newaxis]
+    # Shear angle in degrees
+    shear_factor = np.random.normal(0, shear_sigma)
+    #shear_factor = 1. / np.tan(np.deg2rad(shear_angle))
+    # Apply the shear transformation
+    contour = np.stack([
+        contour[:,0],
+        contour[:,1] + shear_factor * contour[:,0],
+    ], axis = 1)
+    
+    # Rotate the contour
+    rotation_deg =  np.random.normal(0, rot_sigma)
+    rotation_rad = np.deg2rad(rotation_deg)
+    
+    contour = np.stack([
+        np.cos(rotation_rad) * contour[:,0] - np.sin(rotation_rad) * contour[:,1],
+        np.sin(rotation_rad) * contour[:,0] + np.cos(rotation_rad) * contour[:,1]
+    ], axis = 1)
+
+    contour += c_mean[np.newaxis]
+    buffer = 2 * np.array([elastic_distance, elastic_distance])
+    
+    grid_start = np.min(contour, axis = 0) - buffer
+    grid_end = np.max(contour, axis = 0) + buffer
+    
+    # Make grid
+    r_grid = np.arange(grid_start[0], grid_end[0] + grid_delta, grid_delta)
+    c_grid = np.arange(grid_start[1], grid_end[1] + grid_delta, grid_delta)
+    
+    rr, cc = np.meshgrid(r_grid, c_grid)
+    # Shift coordinates by spatially correlated Gaussian noise
+    A0 = elastic_displacement * elastic_distance / grid_delta
+    sigma = elastic_distance / grid_delta
+    
+    rr_morphed = (rr + A0 * gaussian_filter(
+        np.random.normal(size = rr.shape),
+        sigma = sigma)
+    ).flatten()
+    
+    
+    cc_morphed = (cc + A0 * gaussian_filter(
+        np.random.normal(size = cc.shape), 
+        sigma = sigma)
+    ).flatten()
+
+    # Interpolation points
+    points = np.stack([rr.flatten(), cc.flatten()], axis=1)
+
+    morphed_contour = np.stack(
+        [
+            griddata(points, rr_morphed, contour, method='cubic'),
+            griddata(points, cc_morphed, contour, method='cubic')
+        ],
+        axis = 1
+    )
+
+    return morphed_contour
+
+
 
 def split_contour_horizontal(contour, smooth = 2):
     """ Split the contour horizontally
@@ -488,35 +581,83 @@ def split_contour_horizontal(contour, smooth = 2):
         contour = gaussian_filter1d(contour, sigma=smooth, mode='wrap', axis=0)
     midline = find_midline(contour)
     mid_size = midline.midline.shape[0]
+    idx = np.arange(mid_size)
     top_hinge = hinge_interpolator(
         np.r_[midline.top, midline.bot]
     )
-    bot_hinge = hinge_interpolator(
-        np.r_[midline.bot, midline.top]
-    )
-    mid_hinge = hinge_interpolator(
-        midline.midline,
-        wrap = False
-    )
-    idx = np.arange(mid_size)
-    mid_right = mid_hinge.angle_idx(
-        idx, 20
-    )
+#     bot_hinge = hinge_interpolator(
+#         np.r_[midline.bot, midline.top]
+#     )
+#     mid_hinge = hinge_interpolator(
+#         midline.midline,
+#         wrap = False
+#     )
+#     
+#     mid_right = mid_hinge.angle_idx(
+#         idx, 20
+#     )
     top_left = reverse_angle(top_hinge.angle_idx(
-        midline.mid_top_idx[idx], -5
+        midline.mid_top_idx[idx], -30
     ))
     top_right = top_hinge.angle_idx(
         midline.mid_top_idx[idx], 20
     )
-    mid_to_top = -reduce_angle(mid_right - top_left)
-    mid_to_top_max = maximum_filter1d(mid_to_top, 20)
-    peaks, props = find_peaks(mid_to_top_max, height = np.pi / 3)
+    
+#     bot_left = reverse_angle(top_hinge.angle_idx(
+#         midline.mid_top_idx[idx], -30
+#     ))
+    
+#     bot_right = bot_hinge.angle_idx(
+#         midline.mid_bot_idx[idx], 20
+#     )
+    
+#     mid_to_top = -reduce_angle(mid_right - top_left)
+#     bot_hinge = -reduce_angle(bot_right - bot_left)
+    top_hinge = -reduce_angle(top_right - top_left)
+    
+    
+    split_criterium = maximum_filter1d(top_hinge, 20)
+    # The change in the number of consecutive points of the bottom contour that are 
+    # far away from the midline is high where there is a descender, we can use this 
+    # as a split criterium, in combination with the top hinge
+    bot_contour_loop = -np.r_[0, np.diff(midline.mid_bot_idx)]
+    bot_contour_loop[bot_contour_loop < 25] = 0
+    split_criterium += bot_contour_loop
+    peaks, props = find_peaks(split_criterium, height = np.pi / 3)
+    
+#     if len(contour) > 300:
+#         fig, ax = plt.subplots(3, 1)
+#         ax[0].plot(mid_to_top, label = 'mid_to_top')
+#         #ax[0].plot(mid_to_top_max, label = 'mid_to_top_max')
+#         ax[0].plot(top_hinge, label = 'top_hinge')
+#         ax[0].plot(bot_hinge, label = 'bot_hinge')
+#         ax[0].axhline(np.pi / 3)
+#         for peak in peaks:
+#             ax[0].axvline(peak)
+#         ax[0].legend()
+#         ax[1].fill(*np.flipud(contour.T), c='lightgray', edgecolor='k', lw=1)
+#         ax[1].set_ylim(np.max(contour[:,0]), np.min(contour[:,0]))
+#         ax[2].plot(np.diff(midline.mid_bot_idx))
+#         plt.show()
     fraglets = []
     for start, end in zip(np.r_[0, peaks], np.r_[peaks, mid_size]):
         fraglets.append(midline_substr(midline, start, end))
+    # Also include merged contours containing two or three consecutive fragments
+    if len(peaks) > 1:
+        for start, end in zip(np.r_[0, peaks][::2], np.r_[peaks, mid_size][::2]):
+            fraglets.append(midline_substr(midline, start, end))
+        for start, end in zip(np.r_[0, peaks][1::2], np.r_[peaks, mid_size][1::2]):
+            fraglets.append(midline_substr(midline, start, end))
+    if len(peaks) > 2:
+        for start, end in zip(np.r_[0, peaks][::3], np.r_[peaks, mid_size][::3]):
+            fraglets.append(midline_substr(midline, start, end))
+        for start, end in zip(np.r_[0, peaks][1::3], np.r_[peaks, mid_size][1::3]):
+            fraglets.append(midline_substr(midline, start, end))
+        for start, end in zip(np.r_[0, peaks][2::3], np.r_[peaks, mid_size][2::3]):
+            fraglets.append(midline_substr(midline, start, end))
     return fraglets
 
-def extract_fraglets(img_id, binary_image, style, allograph, show_vertical = False, single_graphemes = False, num_points = 100, smooth = 1):
+def extract_fraglets(img_id, binary_image, style, allograph, show_vertical = False, single_graphemes = False, num_points = 100, smooth = 1, augment_factor = 0):
     """ Extract fraglets from a binary image
 
     Extract fraglets from a preprocessed binary image by performing the following steps:
@@ -544,12 +685,6 @@ def extract_fraglets(img_id, binary_image, style, allograph, show_vertical = Fal
     """
     # Find connected components
     components = get_image_components(binary_image)
-#     for cc in components:
-#         plt.matshow(invert(cc.image), extent=np.array(cc.bbox)[[1,3,2,0]] - 0.5, cmap='gray', vmin=-1)
-#         plt.plot(*np.flipud(cc.contour.T), c='k', ls='--')
-#         plt.xlabel('c')
-#         plt.ylabel('r')
-#         plt.show()
     
     fraglets = [] 
     for cc in components:
@@ -560,12 +695,23 @@ def extract_fraglets(img_id, binary_image, style, allograph, show_vertical = Fal
             horizontal_contours = split_contour_vertical(cc, line_gaps, show_vertical = show_vertical)
         else:
             horizontal_contours = [cc.contour]
+        if not augment_factor == 0:
+            # Augment the horizontal contours
+            num_horizontal = len(horizontal_contours)
+            for repeat in range(augment_factor):
+                for i in range(num_horizontal):
+                    horizontal_contours.append(augment_contour(horizontal_contours[i]))
         for contour in horizontal_contours:
-            fraglets.extend(split_contour_horizontal(contour , smooth))
+            try:
+                fraglets.extend(split_contour_horizontal(contour , smooth))
+            except ValueError:
+                "Failed to find midline, augmentation might be too high"
     
     # Interpolate fraglets
     num_fraglets = len(fraglets)
     interpolated_fraglets = np.zeros([num_fraglets, num_points, 2])
+    # Periphery is the length of the contour, which can be used to 
+    # filter the fraglets. 
     fraglet_periphery = np.zeros(num_fraglets)
     fraglet_area = np.zeros(num_fraglets)
     for i, fraglet in enumerate(fraglets):
@@ -623,8 +769,11 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--show_vertical', action='store_true', help='Show plots of vertical segmentation results')
     parser.add_argument('-n', '--num_points', type=int, default=100, help='Number of points to use when interpolating fraglet contours')
     parser.add_argument('-s', '--smooth', type=float, default=1, help='Sigma of contour smoothing filter')
+    parser.add_argument('-a', '--augment_times', type=int, default=0, help='Number of times to repeat the data by augmentation')
+    parser.add_argument('--terminate_after', type=int, default=-1, help='Terminate after first N images (for debugging)')
+    parser.add_argument('--split_params', type=str, default=None, help='Parameters for horizontal splitting')
     args = parser.parse_args()
-    
+    # TODO add augmentation parameters
     image_data_path = os.path.join(args.workdir, 'images.nc')
     print('Reading preprocessed images from {}'.format(image_data_path))
     image_data = xr.open_dataset(image_data_path)
@@ -633,6 +782,8 @@ if __name__ == '__main__':
     # Iterate over the images and extract fraglets
     image_fraglets = []
     for i, img_id in enumerate(tqdm.tqdm(image_data.img_id)):
+        if args.terminate_after != -1 and i > args.terminate_after:
+            break
         # Get image
         data_row = image_data.loc[{'img_id' : img_id}].squeeze()
         
@@ -646,7 +797,8 @@ if __name__ == '__main__':
                 show_vertical = args.show_vertical,
                 single_graphemes = image_data.attrs['single_graphemes'],
                 num_points = args.num_points,
-                smooth = args.smooth
+                smooth = args.smooth,
+                augment_factor = args.augment_times
             )
         )
         if i < args.show_first:
@@ -658,7 +810,7 @@ if __name__ == '__main__':
     fraglets_dataset.attrs['name'] = image_data.attrs['name']
     fraglets_dataset.attrs['single_graphemes'] = image_data.attrs['single_graphemes']
     dataset_path = os.path.join(args.workdir, 'fraglets.nc')
-
+    print('Extracted {} fraglets.'.format(len(fraglets_dataset.fraglet_id)))
     print('Writing output to {}'.format(dataset_path))
     fraglets_dataset.to_netcdf(dataset_path, encoding = {
         "contour": {"zlib" : True},

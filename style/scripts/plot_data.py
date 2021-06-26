@@ -31,7 +31,7 @@ def img_crop_zero(img):
 def read_fraglets(args):
     fraglet_path = os.path.join(args.workdir, 'fraglets.nc')
     print('Reading fraglets images from {}'.format(fraglet_path))
-    fraglet_data = xr.open_dataset(fraglet_path)
+    fraglet_data = xr.load_dataset(fraglet_path)
     print('Read {} fraglets.'.format(len(fraglet_data.fraglet_id)))
     # Filter fraglets
     fraglet_data = fraglet_data.where(fraglet_data.area >= args.min_area, drop=True)
@@ -100,8 +100,10 @@ if __name__ == '__main__':
                 contour = fraglet_data.contour[i].values
                 r, c = contour.T
                 ax.fill(c, -r, c='lightgray', edgecolor='k', lw=2)
+                ax.plot(c[0], -r[0], 'o', c='k')
                 ax.axis('equal')
                 ax.axis('off')
+                
                 if not args.disable_labels:
                     label = str(fraglet_data.style[i].values) + ' ' + str(fraglet_data.allograph[i].values)
                     ax.set_title(label)
