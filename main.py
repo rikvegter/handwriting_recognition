@@ -9,6 +9,19 @@ from segmentation.line import LineSegmenter
 from segmentation.options import SegmentationOptions
 import pandas as pd
 import skimage.transform as st
+import skimage
+import pickle as pk
+from PIL import Image
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
+def get_levenshtein_distance(real: List[int], pred: List[int]) -> int:
+    real_letters: str = "".join([ALT_LABELS[char] for char in real])
+    pred_letters: str = "".join([ALT_LABELS[char] for char in pred])
+    print("P: {}".format(pred_letters))
+    print("R: {}".format(real_letters))
+    return Levenshtein.distance(real_letters, pred_letters)
+
 
 def main(args):
     general_options: GeneralOptions = args.general
@@ -31,6 +44,7 @@ def main(args):
                                    char_height=char_height,
                                    stroke_width=stroke_width)
     segmented_image: List[List[List[np.ndarray]]] = segmenter.segment()
+    segmented_image.reverse()
 
     if general_options.stop_after == 2:
         print("Stopping after character segmentation")
@@ -38,14 +52,31 @@ def main(args):
 
     #Extract features
     feature_extractor = FeatureExtractor()
+    total_count = 0
     for line in segmented_image:
         for word in line:
             for char in word:
+                #Resize character
                 char = st.resize(char, (80, 80))
-                print('width = ', len(char[0]), ' heigth = ',len(char))
-                df = feature_extractor.extract_features(char)
+                char = np.logical_not(char).astype(int)
+                #Reshape the image
+                #img = Image.fromarray(char, 'RGB')
+                plt.imsave('chars/' + str(total_count) + '.PNG', char, cmap = cm.gray)
 
-                
+                #Extract featires
+                df = feature_extractor.extract_features(char)
+                #Apply PCA
+                pca = pk.load(open('feature_character_recognition/models/pca.pkl', 'rb'))
+                pca_data = pca.transform(df)
+
+                #Load the classifier
+                model = pk.load(open('feature_character_recognition/models/svm_model.pkl', 'rb'))
+                #Predict the letter
+                predicted_letter = model.predict(pca_data)
+                print(total_count)
+                total_count += 1
+                print(predicted_letter)
+
 
     # Classify characters
 

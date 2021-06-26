@@ -328,6 +328,7 @@ class CharacterSegmenter:
         max_height_k: float = 0
 
         # try 40 angles between (roughly) -45 and +45 degrees
+
         for k in np.arange(-1, 1, 0.05):
             # shearing array as affine transformation
             # (https://en.wikipedia.org/wiki/Transformation_matrix#Shearing)
@@ -349,5 +350,6 @@ class CharacterSegmenter:
 
         # crop so the image is neat
         deskewed = self.__crop(deskewed)
+
 
         return deskewed
