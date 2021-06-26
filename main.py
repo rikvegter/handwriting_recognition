@@ -1,13 +1,14 @@
 from typing import List
 import numpy as np
 from simple_parsing import ArgumentParser
-
+from feature_character_recognition.feature_extractor import FeatureExtractor
 import utils
 from options import GeneralOptions
 from segmentation.character import CharacterSegmenter
 from segmentation.line import LineSegmenter
 from segmentation.options import SegmentationOptions
-
+import pandas as pd
+import skimage.transform as st
 
 def main(args):
     general_options: GeneralOptions = args.general
@@ -35,8 +36,19 @@ def main(args):
         print("Stopping after character segmentation")
         exit()
 
+    #Extract features
+    feature_extractor = FeatureExtractor()
+    for line in segmented_image:
+        for word in line:
+            for char in word:
+                char = st.resize(char, (80, 80))
+                print('width = ', len(char[0]), ' heigth = ',len(char))
+                df = feature_extractor.extract_features(char)
+
+                
+
     # Classify characters
-    # TODO
+
 
     if general_options.stop_after == 3:
         print("Stopping after character recognition")

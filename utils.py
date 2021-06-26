@@ -1,5 +1,9 @@
 import numpy as np
 
+def reverse_enum(L):
+   for index in reversed(range(len(L))):
+      yield index, L[index]
+
 class StepInfoPrinter:
     """A utility class to allow for easily printing messages to the terminal
     indicating progress in some process.
@@ -9,21 +13,21 @@ class StepInfoPrinter:
         self.max_steps = max_steps
         self.__cur_step = 1
         self.__p = int(np.floor(np.log10(max_steps))) + 1
-    
+
     def print(self, message: str, step: bool = True, end: str = ''):
         """Prints some info along with which step number the program is at.
 
         Args:
-            message (str): 
+            message (str):
                 The info message to print.
 
             step (bool):
                 Whether to print the current step number.
                 Defaults to true.
-            
-            end (str, optional): 
-                The character to end the line with. If this is the last message 
-                being printed, end this with the line feed ('\n') character. 
+
+            end (str, optional):
+                The character to end the line with. If this is the last message
+                being printed, end this with the line feed ('\n') character.
                 Defaults to ''.
         """
         if step:
