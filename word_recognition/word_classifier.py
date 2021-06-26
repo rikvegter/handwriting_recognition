@@ -8,6 +8,9 @@ from character_recognition.character_classifier import CharacterClassifier
 
 class WordClassifier:
     def __init__(self, character_classifier: Union[str, CharacterClassifier]):
+        """
+        :param character_classifier: The path to a directory containing a trained model or a `CharacterClassifier` object.
+        """
         if isinstance(character_classifier, CharacterClassifier):
             self.character_classifier = character_classifier
         elif isinstance(character_classifier, str):
