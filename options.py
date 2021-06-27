@@ -26,3 +26,6 @@ class GeneralOptions:
     # Save the results of intermediate steps to a debug directory in the output
     # path
     debug: bool = flag(default=False, alias="-d")
+
+    # Process only a single image
+    single: bool = flag(default=False, alias="-s")

@@ -81,16 +81,22 @@ def main(args):
     general_options: GeneralOptions = args.general
     classifier_options: ClassifierOptions = args.classifier
 
-    assert os.path.isdir(general_options.input_path)
-    os.makedirs(general_options.output_path, exist_ok=True)
-
     word_classifier = WordClassifier(character_classifier=classifier_options.classifier)
     ngp = NGramProcessor(classifier_options.ngram_file, ngram_length=2)
 
-    _, _, filenames = next(os.walk(general_options.input_path))
-    for file in filenames:
-        print("Processing file: {}".format(file))
-        run_for_file(args, file, word_classifier, ngp)
+    os.makedirs(general_options.output_path, exist_ok=True)
+
+    if general_options.single:
+        run_for_file(args, general_options.input_path, word_classifier, ngp)
+    else:
+        assert os.path.isdir(general_options.input_path)
+
+        _, _, filenames = next(os.walk(general_options.input_path))
+        for file in filenames:
+            print("Processing file: {}".format(file))
+            run_for_file(args, file, word_classifier, ngp)
+
+
 
 
 if __name__ == "__main__":
