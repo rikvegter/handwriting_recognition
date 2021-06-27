@@ -130,7 +130,6 @@ dmypy.json
 
 
 # Project-specific settings
-data/
 *.png
 *.pgm
 *.zip
@@ -141,10 +140,15 @@ results/
 # Mac stuff
 .DS_Store
 
-# VS Code stuff
+# IDE stuff
 .vscode/
 .idea/
 
 # test images and test output
 test_images/
 output/
+character_recognition/data/dataset
+character_recognition/data/original
+
+
+
