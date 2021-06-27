@@ -6,6 +6,7 @@ from simple_parsing import ArgumentParser
 
 import utils
 from options import GeneralOptions
+from pathlib import Path
 from segmentation.character import CharacterSegmenter
 from segmentation.line import LineSegmenter
 from segmentation.options import SegmentationOptions
@@ -62,7 +63,7 @@ def run_for_file(args, file_name: str, word_classifier: WordClassifier, ngp: NGr
     # Get the final transcribed lines as strings of unicode characters
     transcribed_output = "\n".join(utils.decode_words(classified_lines))
     if general_options.output_path is not None:
-        output_file = general_options.output_path + "/" + os.path.basename(file_name) + "_characters.txt"
+        output_file = general_options.output_path + "/" + Path(file_name).stem + "_characters.txt"
         with open(output_file, encoding="utf-8", mode="w+") as file:
             file.write(transcribed_output)
     else:
