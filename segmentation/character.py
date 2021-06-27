@@ -302,13 +302,16 @@ class CharacterSegmenter:
 
         Returns: np.ndarray: A cropped image.
         """
-        nonzeroes = np.argwhere(im)
-        # top left corner
-        tl = nonzeroes.min(axis=0)
-        # bottom right corner
-        br = nonzeroes.max(axis=0)
+        if np.count_nonzero(im) > 0:
+            nonzeroes = np.argwhere(im)
+            # top left corner
+            tl = nonzeroes.min(axis=0)
+            # bottom right corner
+            br = nonzeroes.max(axis=0)
 
-        return im[tl[0]:br[0] + 1, tl[1]:br[1] + 1]
+            return im[tl[0]:br[0] + 1, tl[1]:br[1] + 1]
+        else:
+            return im
 
 
     def __deskew(self, image: np.ndarray) -> np.ndarray:
