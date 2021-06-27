@@ -96,7 +96,9 @@ function decode_hebrew() {
 
     echo "$1" |  while read -r line; do
         # Use sed to place spaces between every character to make processing it easier. Also, remove blank lines.
-        chars=$(echo "$line" | sed -e 's/\(.\)/\1\n/g' | sed '/^$/d' | while read -r char; do get_hebrew_idx "$char"; done | paste -sd' ' | sed "s/ \+/ /g;s/^ //g;s/ $//g")
+        chars=$(echo "$line" | sed -e 's/\(.\)/\1\n/g' | sed '/^$/d' | while read -r char; do get_hebrew_idx "$char"; done | paste -sd' ' | sed "s/ \+/ /g;s/^ //g;s/ $//g")        
+        # Invert the order so we end up with the correct order of the output
+        chars=$(echo "$chars" | awk -F" " '{for (i=NF; i; i--) printf "%s ",$i; print ""}')
 
         # Don't write empty lines to the output file
         test -z "$chars" || echo "$chars" >> "$2"

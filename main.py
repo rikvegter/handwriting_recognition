@@ -1,11 +1,14 @@
 from typing import List
+
 import numpy as np
 from simple_parsing import ArgumentParser
 
+import utils
 from options import GeneralOptions
 from segmentation.character import CharacterSegmenter
 from segmentation.line import LineSegmenter
 from segmentation.options import SegmentationOptions
+from word_recognition.ngram_processor import NGramProcessor
 from word_recognition.word_classifier import WordClassifier
 
 
@@ -38,11 +41,19 @@ def main(args):
 
     # Classify characters
     word_classifier = WordClassifier(character_classifier="character_recognition/data/classification_model/")
-    classified_lines: List[List[List[int]]] = word_classifier.classify_lines(segmented_image, True)
+    # Reduce Line[Words[Char[]]] to Line[Char[]]
+    segmented_image_lines: List[List[np.ndarray]] = [[char for word in line for char in word] for line in segmented_image]
+    classified_lines: List[List[int]] = word_classifier.classify_words(segmented_image_lines, True)
 
-    if general_options.stop_after == 3:
-        print("Stopping after character recognition")
-        exit()
+    # Use bi-grams to improve accuracy
+    ngp = NGramProcessor("util/ngrams_frequencies_withNames.xlsx.txt", ngram_length=2)
+    classified_lines: List[List[int]] = ngp.predict_multiple(classified_lines)
+
+    # Get the final transcribed lines as strings of unicode characters
+    transcribed_lines: List[str] = utils.decode_words(classified_lines)
+
+    print("transcribed_lines: \n=========================\n{}\n=========================\n"
+          .format("\n".join(transcribed_lines)))
 
     # Classify style
     # TODO

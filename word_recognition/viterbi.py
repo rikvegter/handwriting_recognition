@@ -24,7 +24,9 @@ def viterbi(observations: np.ndarray, states: np.ndarray, initial_probs: np.ndar
     path_probs[0, :] = initial_probs[:] * emission[:, observations[0]]
 
     for idx_obs in range(1, len(observations)):
+        # For every observation, check all possible states.
         for idx_state in range(len(states)):
+            # For every possible state of an observation,
             max_transition_prob: float = path_probs[idx_obs - 1, 0] * transition[states[0], states[idx_state]]
 
             prev_st_selected: int = 0
