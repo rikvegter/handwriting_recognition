@@ -18,16 +18,16 @@ class CharacterSegmenter:
     """Character segmentation.
     """
     def __init__(self, general_options: GeneralOptions,
-                 segment_options: CharacterSegmentationOptions, 
+                 segment_options: CharacterSegmentationOptions,
                  n_lines: int,
-                 labeled_lines: np.ndarray, 
+                 labeled_lines: np.ndarray,
                  char_height: float,
                  stroke_width: int) -> None:
 
         self.info = utils.StepInfoPrinter(n_lines)
 
         self.debug: bool = general_options.debug
-        self.output_path: str = os.path.join(general_options.output_path,
+        self.output_path: str = os.path.join(general_options.debug_output_path,
                                              "characters/")
         self.labeled_lines: np.ndarray = labeled_lines
         self.n_lines: int = n_lines
@@ -41,12 +41,12 @@ class CharacterSegmenter:
         """Segments an image in which the lines are labeled into a collection of
         characters. Characters are grouped by words and lines using lists: this
         method returns a list of lines, where the lines are lists of words, and
-        where words are lists of characters. They are indexed according to 
+        where words are lists of characters. They are indexed according to
         right-to-left reading, so the first character reading from the right is
         result[0][0][0].
 
         Returns:
-            List[List[List[np.ndarray]]]: A list of lines, which are lists of 
+            List[List[List[np.ndarray]]]: A list of lines, which are lists of
             words, which are lists of characters.
         """
 
@@ -152,7 +152,7 @@ class CharacterSegmenter:
             word_no (int): The word number
             word (np.ndarray): The 2d array containing the word
         """
-        
+
         # Perform binary closing to smooth edges a bit and close small holes
         word = nd.binary_closing(word)
 

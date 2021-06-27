@@ -4,17 +4,12 @@ ENV TZ="Europe/Amsterdam"
 COPY . /hwr
 WORKDIR /hwr
 
-
 # Install required packages
 RUN \
  echo "***** Installing basic dependencies *****" && \
  apt-get update && \
  apt-get install -y \
-     libssl-dev openssl git wget build-essential
-
-#RUN \
-# echo "***** Installing Python3 *****" && \
-# apt-get install -y python3 python3-pip python3-distutils
+     libssl-dev openssl git wget build-essential mergerfs
 
 # Compile and install python 3.8.7
 RUN \
@@ -31,7 +26,6 @@ RUN \
  ./configure --with-ensurepip=install && \
  make && \
  make install
-
 
 # Set up our project
 RUN \
@@ -50,5 +44,16 @@ RUN \
         /var/tmp/* \
         $HOME/.cache
 
-CMD python3 /hwr/main.py
+ENV MOUNT_DIR=/files
+ENV RUN_DIR=/hwr_run
+ENV CONTAINER_DIR=/hwr
+
+# Setup mergerfs command
+RUN \
+ echo '#!/bin/sh' > /mergerfs.sh && \
+ echo '/usr/bin/mergerfs "$MOUNT_DIR":"$CONTAINER_DIR=NC" "$RUN_DIR" -o defaults' >> /mergerfs.sh && \
+ chmod +x /mergerfs.sh && \
+ mkdir /hwr_run
+
+CMD bash /mergerfs.sh && /python3 /hwr_run/main.py
 
