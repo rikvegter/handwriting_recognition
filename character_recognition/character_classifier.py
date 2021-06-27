@@ -1,7 +1,6 @@
 import os.path
 from typing import Union, List
 
-import PIL.Image
 import numpy as np
 import tensorflow as tf
 from PIL import Image
@@ -9,23 +8,16 @@ from PIL import Image
 from character_recognition import character_recognizer, preprocess_images
 from character_recognition.character_recognizer import LABELS
 
-DEFAULT_MODEL: str = "data/classification_model/"
-"""
-The default model to use.
-
-An example model can be found here: https://drive.google.com/file/d/1utDs6NSGYzpgvAll2yvAOp1SF-z6ydza/view?usp=sharing
-"""
-
 
 class CharacterClassifier:
     """
     Represents a class that can be used to classify images of ancient hebrew characters.
     """
-    def __init__(self, model_path: str = DEFAULT_MODEL):
+    def __init__(self, model_path: str):
         """
         :param model_path: The path to the directory containing the weights of the model to use for classification.
-        Defaults to #DEFAULT_MODEL.
         """
+        assert model_path is not None
         self.model = self.__load_model(model_path if model_path[-1] == "/" else model_path + "/")
 
     def __load_model(self, model_path: str) -> tf.keras.models.Model:

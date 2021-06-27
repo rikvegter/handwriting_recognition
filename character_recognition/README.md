@@ -14,7 +14,11 @@ If you are on Linux (or on MacOS, if you have the correct packages), you can cre
 ### Downloading the dataset
 
 Alternatively, the dataset we used can be
-downloaded [here](https://drive.google.com/file/d/1rbi6yQPT2JjJn0IBdo2_0ZqRc4GO0vNp/view?usp=sharing).
+downloaded.
+1) Download the dataset [here](https://drive.google.com/file/d/1vGRhvtpekVbUJHr4rDKENgw6Q6hbbiKh/view) and place it in this directory.
+2) Decrypt the archive: `gpg dataset.tar.gz.gpg`. The password is the same as the one used for the files provided for this project.
+3) Extract the archive: `tar -xf dataset.tar.gz`
+
 
 # Training the model
 
