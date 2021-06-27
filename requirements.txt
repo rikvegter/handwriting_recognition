@@ -13,3 +13,4 @@ xarray-dataclasses
 umap-learn
 tqdm
 netCDF4
+joblib
