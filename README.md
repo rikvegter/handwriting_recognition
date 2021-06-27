@@ -29,8 +29,16 @@ be executed on the images in the folder. The output will be saved to `./results`
 
 ### Running locally
 
-You can also run the python code directly. If you want to do this, you need to
-provide the correct command line arguments:
+You can also run the python code directly. The code has been tested with Python
+3.8.6, newer versions aren't guaranteed to work (but they might). Before getting
+started, make sure all dependencies are installed:
+
+```bash
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+```
+
+If you want to run locally, you need to provide some command line arguments:
 
 ```bash
 python main.py 
@@ -49,13 +57,13 @@ Options within square brackets are optional.
 An example of a simple valid input is the following:
 
 ```bash
-python main.py -i /path/to/images
+python3 main.py -i /path/to/images
 ```
 
 A more complex example would be the following:
 
 ```bash
-python main.py --single -i /path/to/images/image-2.jpg -o ./custom/results/folder/ -d --stop-after 3
+python3 main.py --single -i /path/to/images/image-2.jpg -o ./custom/results/folder/ -d --stop-after 3
 ```
 
 This will process only one image, save it to a custom output location, save
