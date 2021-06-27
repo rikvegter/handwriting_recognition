@@ -2,125 +2,61 @@ import xarray as xr
 import numpy as np
 import argparse
 import os
-#import fdasrsf.curve_functions as curve_functions
 import tqdm
-import umap
-#import umap.plot
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import LabelEncoder
+from train_classifier import CodebookStyleClassifier, check_dir, read_fraglets, normalize_fraglets
+from preprocess_images import get_preprocessed_images_dataset, make_dir
+from extract_fraglets import get_fraglet_dataset
+import joblib
 
-from sklearn import preprocessing
-
-def check_dir(string):
-    """ Check if path exists
-    """
-    if os.path.isdir(string):
-        return os.path.realpath(string)
-    else:
-        raise NotADirectoryError(string)
-        
-def make_dir(string):
-    """ Make dir if it does not exist
-    """
-    if not os.path.isdir(string):
-        os.makedirs(string)
-    return os.path.realpath(string)      
-
-def read_fraglets(workdir, args):
-    fraglet_path = os.path.join(workdir, 'fraglets.nc')
-    print('Reading fraglets images from {}'.format(fraglet_path))
-    fraglet_data = xr.load_dataset(fraglet_path)
-    print('Read {} fraglets.'.format(len(fraglet_data.fraglet_id)))
-    # Filter fraglets
-    fraglet_data = fraglet_data.where(fraglet_data.area >= args.min_area, drop=True)
-    periphery_factor = fraglet_data.periphery / np.sqrt(fraglet_data.area.values) 
-    fraglet_data = fraglet_data.where(periphery_factor >= args.min_periphery_factor, drop=True)
-    print('Remaining fraglets after filtering: {}.'.format(len(fraglet_data.fraglet_id)))
-    return fraglet_data
-
-
-def normalize_fraglets(fraglet_ds):
-    """ Normalize fraglets in the dataset. 
-    """
-    normlized_contours = xr.zeros_like(fraglet_ds.contour)
-    for i in tqdm.trange(len(fraglet_ds.fraglet_id), desc='Normalizing fraglets'):
-        beta, q, T = curve_functions.pre_proc_curve(fraglet_ds.contour[i].values.T)
-        normlized_contours[i] = beta.T
-    fraglet_ds['contour_norm'] = normlized_contours
-
-# def get_srvf(fraglet_ds):
-#     """ Normalize fraglets in the dataset. 
-#     """
-#     normlized_contours = xr.zeros_like(fraglet_ds.contour)
-#     for i in tqdm.trange(len(fraglet_ds.fraglet_id), desc='Computing square root velocity function'):
-#         beta, q, T = curve_functions.pre_proc_curve(fraglet_ds.contour[i].values.T)
-#         normlized_contours[i] = q.T
-#     fraglet_ds['srvf'] = normlized_contours
-
-    
-def normalize_fraglets_simple(fraglet_ds):
-    """ Normalize fraglets in the dataset. 
-    
-    Normalize by:
-      - Subtracting mean
-      - 
-    """
-    normlized_contours = xr.zeros_like(fraglet_ds.contour)
-    sqare_root_velocity = xr.zeros_like(fraglet_ds.contour)
-    normlized_contours.values[:,:,0] = preprocessing.scale(
-        fraglet_ds.contour.values[:,:,0],
-        axis=1
-    )
-    normlized_contours.values[:,:,1] = preprocessing.scale(
-        fraglet_ds.contour.values[:,:,1],
-        axis=1
-    )
-    sqare_root_velocity.values[:] = np.gradient(normlized_contours.values, axis = 1)
-    sqare_root_velocity.values[:] /= np.sqrt(np.linalg.norm(sqare_root_velocity.values, axis = 2))[:,:,np.newaxis]
-    
-    fraglet_ds['contour_norm'] = normlized_contours
-    fraglet_ds['square_root_velocity'] = sqare_root_velocity
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Classify fragment style based on labeled fraglets and fragment fraglets')
-    parser.add_argument('fragment_workdir', type=check_dir, help='Work directory containing fraglets of the fragments')
-    parser.add_argument('codebook_workdir', type=check_dir, help='Work directory containing fraglets of the codebook')
-    parser.add_argument('output_dir', type=make_dir, help='Directory where classification results will be written')
-    parser.add_argument('-a', '--min_area', type=float, default=100., help='Minimum fraglet area')
-    parser.add_argument('-p', '--min_periphery_factor', type=float, default=3.5, help='Minimum fraglet factor periphery / sqrt(Area)')
+    parser.add_argument('image_dir', type=check_dir, help='Image directory')
+    parser.add_argument('classifier_dir', type=check_dir, help='Work directory containing the saved classifier')
+    parser.add_argument('results_dir', type=make_dir, help='Directory for writing classification results')
     args = parser.parse_args()
     
-    fragment_fraglets = read_fraglets(args.fragment_workdir, args)
-    codebook_fraglets = read_fraglets(args.codebook_workdir, args)
-    normalize_fraglets(fragment_fraglets)
-    normalize_fraglets(codebook_fraglets)
+    # Load classifier
+    classifier_path = os.path.join(args.classifier_dir, 'classifier.joblib')
+    classifier = joblib.load(classifier_path)
     
-    # Create codebook
-    regressor = umap.UMAP()
-    codebook_data = codebook_fraglets['contour_norm'].values.reshape(-1,200)
-    fragment_fraglets = fragment_fraglets['contour_norm'].values.reshape(-1,200)
+    # Preprocess fragments
+    preprocessing_args = classifier.preprocessing_args
+    preprocessing_args.image_dir = args.image_dir
+    preprocessing_args.style = False
+    preprocessing_args.labeled = False
+    preprocessing_args.pattern = "*.jpg"
+    preprocessing_args.name = "style_classification"
     
-    codebook_style = codebook_fraglets['style'].values.astype('str')
-    # https://umap-learn.readthedocs.io/en/latest/supervised.html?highlight=classification#using-labels-to-separate-classes-supervised-umap
+    image_data = get_preprocessed_images_dataset(preprocessing_args)
+    fraglet_extraction_args = classifier.fraglet_extraction_args
+    fraglet_extraction_args.augment_times = 0
+    classification_fraglet_data = get_fraglet_dataset(image_data, fraglet_extraction_args)
+    dataset_path = os.path.join(args.classifier_dir, 'fraglets.nc')
     
-    label_encoder = LabelEncoder()
-    style_encoder = LabelEncoder()
-    style_encoder.fit(codebook_style)
-    label = codebook_fraglets['style'].astype('str').str.cat(codebook_fraglets['allograph'].astype('str')).values
+    print('Writing output to {}'.format(dataset_path))
+    classification_fraglet_data.to_netcdf(dataset_path, encoding = {
+        "contour": {"zlib" : True},
+    })
+    
+    normalize_fraglets(classification_fraglet_data)
+    fragment_density = classifier.get_fragment_density(classification_fraglet_data)
+    result_path = make_dir("./results")
+    for img_id, frag_dict in fragment_density.items():
+        r = classifier.classify_fragment(frag_dict)
+        path = image_data.where(image_data.img_id == img_id, drop=True).img_path.item()
+        basename = os.path.splitext(os.path.basename(path))[0]
+        style_path = os.path.join('./results', basename + "_style.txt")
+        #style_path = ".".join(path.split('.')[:-1]) + "_style.txt"
+        print(style_path)
+        with open(style_path, 'w') as style_out_file:
+            style_out_file.write(r[0][1])
 
-    target = label_encoder.fit_transform(label)
-    codebook_embedding = regressor.fit_transform(codebook_data, y=target)
-    
-    fig, ax = plt.subplots(1, figsize=(14, 10))
-    plt.scatter(*codebook_embedding.T, s=0.1, c=style_encoder.transform(codebook_style), cmap='Spectral', alpha=1.0)
-    plt.setp(ax, xticks=[], yticks=[])
-    plt.title('Supervised UMAP embbedding');
-    plt.show()
-    
-    fragments_embedding = regressor.transform(fragment_fraglets)
-    fig, ax = plt.subplots(1, figsize=(14, 10))
-    plt.scatter(*codebook_embedding.T, s=0.1, c=style_encoder.transform(codebook_style), alpha=1.0)
-    plt.scatter(*fragments_embedding.T, s=0.1, c='b', alpha=1.0)
-    plt.setp(ax, xticks=[], yticks=[])
-    plt.title('Supervised UMAP embbedding (codebook and fragments)');
-    plt.show()
+#     # Load fragments
+#     fragment_fraglets = read_fraglets(args.fragment_dir, classifier.args)
+#     normalize_fraglets(fragment_fraglets)
+                        
+#     fragment_density = classifier.get_fragment_density(fragment_fraglets)
+                        
+#     for img_id, frag_dict in fragment_density.items():
+#         r = classifier.classify_fragment(frag_dict)

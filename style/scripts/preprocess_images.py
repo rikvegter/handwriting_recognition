@@ -5,13 +5,15 @@ import skimage.io as io
 from itertools import chain
 import tqdm
 import numpy as np
-from skimage.util import img_as_uint, invert
+from skimage.util import img_as_ubyte, invert
 from skimage.color import rgb2gray
 from skimage.filters import threshold_otsu, gaussian
 import skimage.transform as transform
 from skimage.measure import label, find_contours, regionprops
 from skimage.morphology import binary_closing, disk, binary_opening
-
+import pickle
+import codecs
+import matplotlib.pyplot as plt
 # Define names for styles and allographs
 # Periods
 styles = ["Archaic", "Hasmonean", "Herodian"]
@@ -81,13 +83,13 @@ def load_image_dataset(path, dataset_name, index_styles, index_allographs, img_p
         # Convert to grayscale if necessary
         if len(img.shape) == 3:
             img = rgb2gray(img)
-            
+        img = img_as_ubyte(img)
         # Construct xarray dataset to represent the loaded image and metadata
         r = img.shape[0]
         c = img.shape[1]
         img_da = xr.DataArray(
             img[np.newaxis], coords=[img_id_coords, ('r', np.arange(r)), ('c', np.arange(c))]
-        ).astype('uint8')
+        )
         img_shape =  xr.DataArray(
             [[r, c]], coords = [img_id_coords, ('pos', ['r', 'c'])]
         )
@@ -123,29 +125,12 @@ def preprocess_img(img,  gaussian_radius, opening_disk, closing_disk):
     """
     img = gaussian(img, gaussian_radius)
     img = img >= threshold_otsu(img)
-    
     # We could simply exchange opening and closing here to avoid inverting
     img = invert(img)
     img = binary_opening(img, disk(opening_disk))
     img = binary_closing(img, disk(closing_disk))
     return img
-
-if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser(description='Preprocess images from a file tree for fraglet extraction. Preprocessed images with metadata are stored as a NetCDF file in workdir/images.nc for further processing.')
-    parser.add_argument('image_dir', type=check_dir, help='Root path for image files')
-    parser.add_argument('workdir', type=make_dir, help='Work directory for storing intermediate data and plots')
-    parser.add_argument('-s', '--style', action='store_true', help='Traverse style subdirectories and label image data with style')
-    parser.add_argument('-l', '--labeled',  action='store_true', help='Traverse allograph subdirectories and label image data with allograph')
-    parser.add_argument('-p', '--pattern', type=str, default="*.*", help='Image filename pattern (default *.*)')
-    parser.add_argument('-n', '--name', type=str, default='', help="Dataset name (default is the last directory of image_dir)")
-    parser.add_argument('-g', '--gaussian_radius', type=float, default=0.5, help="Radius of gaussian blur")
-    parser.add_argument('-o', '--opening_disk', type=int, default=3, help="Size of opening disk")
-    parser.add_argument('-c', '--closing_disk', type=int, default=1, help="Size of closing disk")
-
-    
-    args = parser.parse_args()
-    
+def get_preprocessed_images_dataset(args):
     print_path = args.image_dir
     if args.style:
         print_path = os.path.join(print_path, '<style>')
@@ -162,16 +147,35 @@ if __name__ == '__main__':
     dataset.attrs['name'] = args.name
     dataset.attrs['single_graphemes'] = 1 * args.labeled
     # Preprocess: gaussian filter
-    img_bin = xr.zeros_like(dataset.img_grayscale, dtype=bool)
+    img_bin = xr.zeros_like(dataset.img_grayscale, dtype=np.uint8)
     for i in tqdm.trange(len(dataset.img_id), desc="Preprocessing"):
         img_bin[i] = preprocess_img(
-            dataset.img_grayscale[i], 
+            dataset.img_grayscale[i].values, 
             args.gaussian_radius, 
             args.opening_disk,
             args.closing_disk
         )
     dataset = dataset.assign(img_bin = img_bin)
+    # Save args to be able to use the same parameters when classifying
+    dataset.attrs['preprocessing_args'] = codecs.encode(pickle.dumps(args), "base64").decode()
+
+    return dataset
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description='Preprocess images from a file tree for fraglet extraction. Preprocessed images with metadata are stored as a NetCDF file in workdir/images.nc for further processing.')
+    parser.add_argument('image_dir', type=check_dir, help='Root path for image files')
+    parser.add_argument('workdir', type=make_dir, help='Work directory for storing intermediate data and plots')
+    parser.add_argument('-s', '--style', action='store_true', help='Traverse style subdirectories and label image data with style')
+    parser.add_argument('-l', '--labeled',  action='store_true', help='Traverse allograph subdirectories and label image data with allograph')
+    parser.add_argument('-p', '--pattern', type=str, default="*.*", help='Image filename pattern (default *.*)')
+    parser.add_argument('-n', '--name', type=str, default='', help="Dataset name (default is the last directory of image_dir)")
+    parser.add_argument('-g', '--gaussian_radius', type=float, default=0.5, help="Radius of gaussian blur")
+    parser.add_argument('-o', '--opening_disk', type=int, default=0, help="Size of opening disk")
+    parser.add_argument('-c', '--closing_disk', type=int, default=0, help="Size of closing disk")
+
     
+    args = parser.parse_args()
+    dataset = get_preprocessed_images_dataset(args)
     dataset_path = os.path.join(args.workdir, 'images.nc')
 
     print('Writing output to {}'.format(dataset_path))

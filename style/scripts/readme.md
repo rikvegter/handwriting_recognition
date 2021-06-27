@@ -32,7 +32,15 @@ Style classification consists of four steps:
 
 # Scripts
 
-## `train_classifier.py`
-Should write leave-one-out plots to the output directory
+## `classify_style.py`
 
-## `classify.py`
+Should be called with three arguments:
+ - Input image directory
+ - Classifier directory
+ - Result directory
+
+e.g.:
+
+```bash
+python3 classify_style.py /patyh
+```

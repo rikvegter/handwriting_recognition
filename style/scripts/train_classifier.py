@@ -6,14 +6,14 @@ import xarray as xr
 import numpy as np
 import argparse
 import os
-#import fdasrsf.curve_functions as curve_functions
 import tqdm
 import umap
-#import umap.plot
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder
-
-from sklearn import preprocessing
+import joblib
+from sklearn import preprocessing, cluster, feature_selection
+import codecs
+import pickle
 
 def check_dir(string):
     """ Check if path exists
@@ -55,7 +55,7 @@ def normalize_fraglets(fraglet_ds):
       - Setting standard deviation to one
     """
     normlized_contours = xr.zeros_like(fraglet_ds.contour)
-    sqare_root_velocity = xr.zeros_like(fraglet_ds.contour)
+#     sqare_root_velocity = xr.zeros_like(fraglet_ds.contour)
     normlized_contours.values[:,:,0] = preprocessing.scale(
         fraglet_ds.contour.values[:,:,0],
         axis=1
@@ -64,11 +64,11 @@ def normalize_fraglets(fraglet_ds):
         fraglet_ds.contour.values[:,:,1],
         axis=1
     )
-    sqare_root_velocity.values[:] = np.gradient(normlized_contours.values, axis = 1)
-    sqare_root_velocity.values[:] /= np.sqrt(np.linalg.norm(sqare_root_velocity.values, axis = 2))[:,:,np.newaxis]
+#     sqare_root_velocity.values[:] = np.gradient(normlized_contours.values, axis = 1)
+#     sqare_root_velocity.values[:] /= np.sqrt(np.linalg.norm(sqare_root_velocity.values, axis = 2))[:,:,np.newaxis]
     
     fraglet_ds['contour_norm'] = normlized_contours
-    fraglet_ds['square_root_velocity'] = sqare_root_velocity
+#     fraglet_ds['square_root_velocity'] = sqare_root_velocity
     
 def equalize_fraglet_numbers(dataset):
     """ Equalize number of fraglets per style by selecting a random subset for over-represented styles
@@ -108,12 +108,143 @@ def encode_labels(dataset):
     dataset['allo_label'] = ('fraglet_id', allo_label_encoder.fit_transform(allo_label))
     dataset.attrs['allo_label_encoder'] = allo_label_encoder
 
+    
 class CodebookStyleClassifier:
-    def __init__(self, codebook_dataset, fragment_dataset):
-        pass
+    def get_fragment_density(self, dataset, fit_feature_selection = False):
+        """ Calculate density of the embedding per image
+        
+        Returns:
+        dict of dict {'img_id' -> {'density' : ..., 'style' : ...}}
+        """
+        features = np.stack([dataset['contour_norm'].values], axis = 2).reshape(-1,200)
+        print("Calculating fraglet embedding...")
+        embedding = self.codebook_umap.transform(features)
+        print("Quantizing fraglet emedding...")
+        quantized_embedding = self.codebook_kmeans.predict(embedding)
+
+        img_ids = dataset['img_id'].values.astype('str')
+        
+        unique_images = np.unique(img_ids)
+        
+        output = {}
+        for i, img_id in tqdm.tqdm(enumerate(unique_images), desc="Calculating codebook pdf"):
+            quantized_fragment = quantized_embedding[img_ids == img_id]
+            # Count freqency of each codebook point
+            output[img_id] = dict()
+            density = np.bincount(
+                quantized_fragment, 
+                minlength=self.codebook_kmeans.n_clusters
+            ).astype('float')
+            # Zero values are problematic for chi2 so set a small minimum
+            density = np.maximum(density, 0.001)
+            # Normalize the density
+            output[img_id]['img_id'] = img_id
+            output[img_id]['density'] = density / np.sum(density)
+            # Get an arbitrary index for this image
+            first_idx = np.argmax(img_ids == img_id)
+            if fit_feature_selection:
+                output[img_id]['style'] = dataset['style'].values[first_idx]
+        if fit_feature_selection:
+            self.codebook_selection = feature_selection.SelectKBest(
+                score_func = feature_selection.chi2, 
+                k=self.num_codebook_vectors
+            )
+            # Fit codebook feature selection to maximize performance on style classification
+            # of the labeled fraglets
+            densities = np.array([im['density'] for im in output.values()])
+            labels = np.array(
+                self.style_encoder.transform(
+                    [im['style'] for im in output.values()]
+                )
+            )
+            self.codebook_selection.fit(
+                densities,
+                labels
+            )
+        for frag_dict in output.values():
+            frag_dict['codebook_density'] = self.codebook_selection.transform(
+                frag_dict['density'].reshape(1, -1)
+            ).squeeze()
+            # Normalize codebook PDF
+            frag_dict['codebook_density'] /= np.sum(frag_dict['codebook_density'])
+        return output
+    def classify_fragment(self, query_dict, drop_self = True):
+        """ Style classification using a dict as returned by get_fragment_density 
+        
+        """
+        fragment_density = self.fragment_density
+        # Drop this id, if evaluating perfomance on the same dataset
+        if drop_self:
+            fragment_density = {k: v for k, v in fragment_density.items() if k != query_dict['img_id']}
+        # Calculate chi2 distance for each 
+        distances = []
+        for img_id, frag_dict in fragment_density.items():
+
+            a = query_dict['codebook_density']
+            b = frag_dict['codebook_density']
+            chisq = np.sum((a - b)**2 / (a + b))
+            distances.append((chisq, frag_dict['style'], img_id))
+        ordering = np.argsort([dist for dist, _, _ in distances])
+        distances = [distances[i] for i in ordering]
+        print("Classifying {}, styles of top 3 most similar fragments: {}, {}, {}".format(
+            query_dict['img_id'],
+            distances[0][1], 
+            distances[1][1],
+            distances[2][1], 
+        ))
+        return distances
+    def __init__(self, codebook_dataset, fragment_dataset, args):
+        self.args = args
+        self.preprocessing_args = pickle.loads(
+            codecs.decode(
+                fragment_dataset.attrs['preprocessing_args'].encode(), "base64"
+            )
+        )
+        self.fraglet_extraction_args = pickle.loads(
+            codecs.decode(
+                fragment_dataset.attrs['fraglet_extraction_args'].encode(), "base64"
+            )
+        )
+        self.allo_encoder = codebook_dataset.attrs['allo_label_encoder']
+        self.style_encoder = codebook_dataset.attrs['style_label_encoder']
+        self.full_encoder = codebook_dataset.attrs['full_label_encoder']
+        self.codebook_umap = umap.UMAP(
+            min_dist=0.1,
+            n_components=args.embedding_components,
+            n_neighbors=args.embedding_neighbours,
+            metric=args.embedding_metric,
+            verbose=True
+        )
+        train_features = np.stack([codebook_dataset['contour_norm'].values], axis = 2).reshape(-1,200)
+        # Embed the codebook datastet
+        print("Calculating codebook embedding...")
+        self.codebook_embedding = self.codebook_umap.fit_transform(train_features, y=codebook_dataset.full_label)
+        
+        # Find codebook clusters
+        print("Quantizing codebook vectors...")
+        self.codebook_kmeans = cluster.KMeans(
+            n_clusters = args.kmeans_clusters
+        )
+        self.codebook_encoding = self.codebook_kmeans.fit_predict(self.codebook_embedding)
+        
+        print("Embedding style fragments...")
+        #fragment_features = np.stack([fragment_dataset['contour_norm'].values], axis = 2).reshape(-1,200)
+        self.num_codebook_vectors = args.codebook_vectors
+        self.fragment_density = self.get_fragment_density(fragment_dataset, fit_feature_selection=True)
+        
+        print('Evaluating training performance...')
+        for img_id, frag_dict in tqdm.tqdm(self.fragment_density.items()):
+            r = self.classify_fragment(frag_dict)
+#         self.fragment_embedding = self.codebook_umap.transform(fragment_dataset)
+        
+#         print("Quantizing fragment fraglets...")
+#         self.fragment_encoding = codebook_kmeans.fit_predict(self.fragment_embedding)
+        
+        
+        
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Classify fragment style based on labeled fraglets and fragment fraglets')
+    parser = argparse.ArgumentParser(description='Train a style classifier')
     parser.add_argument('fragment_workdir', type=check_dir, help='Work directory for style-labeled fraglets')
     parser.add_argument('codebook_workdir', type=check_dir, help='Work directory for style- and allograph-labeled fraglets')
     parser.add_argument('classifier_dir', type=make_dir, help='Directory where the classifier is saved and performance metrics are saved')
@@ -132,12 +263,19 @@ if __name__ == '__main__':
     # Equalize number of fragments by style
     codebook_fraglets = equalize_fraglet_numbers(codebook_fraglets)
     
-    normalize_fraglets(fragment_fraglets)
     normalize_fraglets(codebook_fraglets)
+    normalize_fraglets(fragment_fraglets)
+
     
     # Encode labels of the codebook to integer labels
     encode_labels(codebook_fraglets)
     
+    # Train the classifier
+    classifier = CodebookStyleClassifier(codebook_fraglets, fragment_fraglets, args)
+    classifier_path = os.path.join(args.classifier_dir, 'classifier.joblib')
+    joblib.dump(classifier, classifier_path)
+    
+    #clf = joblib.load(classifier_path) 
 #     # Create codebook
 #     regressor = umap.UMAP()
 #     codebook_data = codebook_fraglets['contour_norm'].values.reshape(-1,200)

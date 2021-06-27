@@ -23,6 +23,8 @@ from scipy.signal import find_peaks
 from xarray_dataclasses import Attr, Coord, Data, datasetclass
 from dataclasses import dataclass, field
 from typing import Tuple
+import pickle
+import codecs
 
 @datasetclass
 class Fraglets:
@@ -760,28 +762,12 @@ def extract_fraglets(img_id, binary_image, style, allograph, show_vertical = Fal
         periphery = fraglet_periphery
     )
     return fraglets_data
-    
-if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Read preprocessed images from workdir/images.nc and extract fraglets to workdir/fraglets.nc.')
-    parser.add_argument('workdir', type=check_dir, help='Work directory')
-    parser.add_argument('-f', '--show_first', type=int, default=0, help='Show plots of final fraglets of first N images')
-    parser.add_argument('-v', '--show_vertical', action='store_true', help='Show plots of vertical segmentation results')
-    parser.add_argument('-n', '--num_points', type=int, default=100, help='Number of points to use when interpolating fraglet contours')
-    parser.add_argument('-s', '--smooth', type=float, default=1, help='Sigma of contour smoothing filter')
-    parser.add_argument('-a', '--augment_times', type=int, default=0, help='Number of times to repeat the data by augmentation')
-    parser.add_argument('--terminate_after', type=int, default=-1, help='Terminate after first N images (for debugging)')
-    parser.add_argument('--split_params', type=str, default=None, help='Parameters for horizontal splitting')
-    args = parser.parse_args()
-    # TODO add augmentation parameters
-    image_data_path = os.path.join(args.workdir, 'images.nc')
-    print('Reading preprocessed images from {}'.format(image_data_path))
-    image_data = xr.open_dataset(image_data_path)
-    print('Read {} images in dataset {}.'.format(len(image_data.img_id), image_data.dataset[0].values))
+def get_fraglet_dataset(image_data, args):
     
     # Iterate over the images and extract fraglets
     image_fraglets = []
-    for i, img_id in enumerate(tqdm.tqdm(image_data.img_id)):
+    for i, img_id in enumerate(tqdm.tqdm(image_data.img_id, desc="Extracting fraglets")):
         if args.terminate_after != -1 and i > args.terminate_after:
             break
         # Get image
@@ -809,8 +795,31 @@ if __name__ == '__main__':
     # Copy attributes from image dataset
     fraglets_dataset.attrs['name'] = image_data.attrs['name']
     fraglets_dataset.attrs['single_graphemes'] = image_data.attrs['single_graphemes']
-    dataset_path = os.path.join(args.workdir, 'fraglets.nc')
+    fraglets_dataset.attrs['preprocessing_args'] = image_data.attrs['preprocessing_args']
+    fraglets_dataset.attrs['fraglet_extraction_args'] = codecs.encode(pickle.dumps(args), "base64").decode()
     print('Extracted {} fraglets.'.format(len(fraglets_dataset.fraglet_id)))
+    return fraglets_dataset
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description='Read preprocessed images from workdir/images.nc and extract fraglets to workdir/fraglets.nc.')
+    parser.add_argument('workdir', type=check_dir, help='Work directory')
+    parser.add_argument('-f', '--show_first', type=int, default=0, help='Show plots of final fraglets of first N images')
+    parser.add_argument('-v', '--show_vertical', action='store_true', help='Show plots of vertical segmentation results')
+    parser.add_argument('-n', '--num_points', type=int, default=100, help='Number of points to use when interpolating fraglet contours')
+    parser.add_argument('-s', '--smooth', type=float, default=0.5, help='Sigma of contour smoothing filter')
+    parser.add_argument('-a', '--augment_times', type=int, default=0, help='Number of times to repeat the data by augmentation')
+    parser.add_argument('--terminate_after', type=int, default=-1, help='Terminate after first N images (for debugging)')
+    parser.add_argument('--split_params', type=str, default=None, help='Parameters for horizontal splitting')
+    args = parser.parse_args()
+    # TODO add augmentation parameters
+    image_data_path = os.path.join(args.workdir, 'images.nc')
+    print('Reading preprocessed images from {}'.format(image_data_path))
+    image_data = xr.open_dataset(image_data_path)
+    print('Read {} images in dataset {}.'.format(len(image_data.img_id), image_data.dataset[0].values))
+    #print(pickle.loads(codecs.decode(image_data.attrs['preprocessing_args'].encode(), "base64")))
+    fraglets_dataset = get_fraglet_dataset(image_data, args)
+    
+    dataset_path = os.path.join(args.workdir, 'fraglets.nc')
     print('Writing output to {}'.format(dataset_path))
     fraglets_dataset.to_netcdf(dataset_path, encoding = {
         "contour": {"zlib" : True},
