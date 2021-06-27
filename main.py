@@ -66,11 +66,11 @@ def main(args):
                 #Extract featires
                 df = feature_extractor.extract_features(char)
                 #Apply PCA
-                pca = pk.load(open('feature_character_recognition/models/pca.pkl', 'rb'))
+                pca = pk.load(open('feature_character_recognition/models/pca_duplicated.pkl', 'rb'))
                 pca_data = pca.transform(df)
 
                 #Load the classifier
-                model = pk.load(open('feature_character_recognition/models/svm_model.pkl', 'rb'))
+                model = pk.load(open('feature_character_recognition/models/svm_duplicated.pkl', 'rb'))
                 #Predict the letter
                 predicted_letter = model.predict(pca_data)
                 print(total_count)

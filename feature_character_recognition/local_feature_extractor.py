@@ -12,7 +12,7 @@ from sklearn.metrics import accuracy_score
 from scipy.ndimage.interpolation import shift
 
 N_FOLDS = 5
-data_dir = '../monkbrill'
+data_dir = '../monkbrill_duplicated'
 WIDTH_IMAGE = 80
 HEIGHT_IMAGE = 80
 INK_THRESHOLD = 20
@@ -170,8 +170,8 @@ def main():
 
 
     #Save the data
-    import pdb; pdb.set_trace()
-    df.to_pickle('local_features.pkl')
+
+    df.to_pickle('local_features_duplicated.pkl')
 
 
 if __name__ == "__main__":

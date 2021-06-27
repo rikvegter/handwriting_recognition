@@ -3,7 +3,7 @@ import pickle
 import pandas as pd
 from sklearn.decomposition import PCA
 
-COMPONENTS = 50
+COMPONENTS = 25
 
 def create_components_names(num_of_components):
     columns = []
@@ -12,7 +12,7 @@ def create_components_names(num_of_components):
     return columns
 
 #Prepare dataset
-df = pd.read_pickle('local_features.pkl')
+df = pd.read_pickle('local_features_duplicated.pkl')
 columns_to_drop = ['label']
 X = df.drop(columns_to_drop, axis = 1)
 
@@ -27,5 +27,5 @@ principalDf = pd.DataFrame(data = principalComponents
              , columns = component_names)
 principalDf = principalDf.join(df['label'])
 import pdb; pdb.set_trace()
-#pickle.dump(pca, open('pca.pkl', 'wb'))
-principalDf.to_pickle('pca_data.pkl')
+pickle.dump(pca, open('pca_duplicated.pkl', 'wb'))
+principalDf.to_pickle('pca_data_duplicated.pkl')

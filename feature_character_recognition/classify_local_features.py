@@ -20,7 +20,7 @@ def drop_column_names(drop_pc_components_from, drop_pc_components_until):
 
 def main(pc_components):
     #df = pd.read_pickle('pca_features.pkl')
-    df = pd.read_pickle('pca_data.pkl')
+    df = pd.read_pickle('pca_data_duplicated.pkl')
 
     #columns_to_drop = drop_column_names(pc_components + 1, DROP_PC_COMPONENTS_UNTIL + 1)
     #df = df.drop(columns=columns_to_drop)
@@ -61,7 +61,7 @@ def main(pc_components):
     train_acc = accuracy_score(y_true, y_pred)
     test_acc = k_fold_accuracy
 
-    pkl_filename = 'SVM_model.pkl'
+    pkl_filename = 'svm_duplicated.pkl'
     with open(pkl_filename, 'wb') as file:
         pickle.dump(clf, file)
 
