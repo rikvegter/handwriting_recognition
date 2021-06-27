@@ -135,6 +135,8 @@ data/
 *.pgm
 *.zip
 *.tar.gz
+*.dckr
+results/
 
 # Mac stuff
 .DS_Store
