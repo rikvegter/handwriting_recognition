@@ -22,5 +22,5 @@ RUN \
         /var/tmp/* \
         $HOME/.cache
 
-CMD python3 /hwr/main.py -i "/input" -o "/output"
+CMD python3 /hwr/main.py -i "/input" -o "/output/results"
 
