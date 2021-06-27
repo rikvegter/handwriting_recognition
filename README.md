@@ -41,7 +41,7 @@ python3 -m pip install -r requirements.txt
 If you want to run locally, you need to provide some command line arguments:
 
 ```bash
-python main.py 
+python3 main.py 
     [-h]                            # Show help for CLI arguments
     -i str                          # Directory containing files to process. If --single is set, the path to the file.
     [-o str]                        # Output directory
