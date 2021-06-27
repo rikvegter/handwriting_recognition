@@ -138,8 +138,9 @@ dmypy.json
 # Mac stuff
 .DS_Store
 
-# VS Code stuff
+# IDE stuff
 .vscode/
+.idea/
 
 # test images and test output
 test_images/

@@ -141,6 +141,7 @@ data/
 
 # VS Code stuff
 .vscode/
+.idea/
 
 # test images and test output
 test_images/

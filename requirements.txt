@@ -8,3 +8,8 @@ numpy~=1.19.2
 scipy>=1.6.3
 simple-parsing>=0.0.15.post1
 scikit-image>=0.18.1
+xarray
+xarray-dataclasses
+umap-learn
+tqdm
+netCDF4
