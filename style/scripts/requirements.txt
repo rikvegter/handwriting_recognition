@@ -1,0 +1,9 @@
+numpy
+scipy
+matplotlib
+scikit-image
+xarray
+xarray-dataclasses
+scikit-learn
+umap-learn
+tqdm
