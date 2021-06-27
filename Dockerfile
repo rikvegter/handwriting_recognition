@@ -9,7 +9,7 @@ RUN \
  echo "***** Installing basic dependencies *****" && \
  apt-get update && \
  apt-get install -y \
-     libssl-dev openssl git wget build-essential mergerfs
+     libssl-dev openssl git wget build-essential
 
 # Compile and install python 3.8.7
 RUN \
@@ -44,16 +44,5 @@ RUN \
         /var/tmp/* \
         $HOME/.cache
 
-ENV MOUNT_DIR=/files
-ENV RUN_DIR=/hwr_run
-ENV CONTAINER_DIR=/hwr
-
-# Setup mergerfs command
-RUN \
- echo '#!/bin/sh' > /mergerfs.sh && \
- echo '/usr/bin/mergerfs "$MOUNT_DIR":"$CONTAINER_DIR=NC" "$RUN_DIR" -o defaults' >> /mergerfs.sh && \
- chmod +x /mergerfs.sh && \
- mkdir /hwr_run
-
-CMD bash /mergerfs.sh && /python3 /hwr_run/main.py
+CMD python3 /hwr/main.py -i "/input" -o "/output"
 
