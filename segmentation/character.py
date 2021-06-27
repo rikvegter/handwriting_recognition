@@ -27,7 +27,7 @@ class CharacterSegmenter:
         self.info = utils.StepInfoPrinter(n_lines)
 
         self.debug: bool = general_options.debug
-        self.output_path: str = os.path.join(general_options.debug_output_path,
+        self.output_path: str = os.path.join(general_options.output_path,
                                              "characters/")
         self.labeled_lines: np.ndarray = labeled_lines
         self.n_lines: int = n_lines

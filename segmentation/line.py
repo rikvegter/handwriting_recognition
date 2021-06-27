@@ -38,7 +38,7 @@ class LineSegmenter:
         self.info.print("Setting up...")
         # Set debug settings
         self.debug = general_options.debug
-        self.output_path = general_options.debug_output_path
+        self.output_path = general_options.output_path
         self.im_counter = 0  # for labeling image order
         if self.debug:
             os.makedirs(self.output_path, exist_ok=True)
