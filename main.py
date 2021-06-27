@@ -87,7 +87,9 @@ def main(args):
     os.makedirs(general_options.output_path, exist_ok=True)
 
     if general_options.single:
-        run_for_file(args, general_options.input_path, word_classifier, ngp)
+        file = general_options.input_path
+        print("Processing file: {}".format(file))
+        run_for_file(args, file, word_classifier, ngp)
     else:
         assert os.path.isdir(general_options.input_path)
 
@@ -95,8 +97,6 @@ def main(args):
         for file in filenames:
             print("Processing file: {}".format(file))
             run_for_file(args, file, word_classifier, ngp)
-
-
 
 
 if __name__ == "__main__":

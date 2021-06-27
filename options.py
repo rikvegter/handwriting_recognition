@@ -8,7 +8,8 @@ from simple_parsing.helpers.fields import choice, flag
 class GeneralOptions:
     """General options for the tool"""
 
-    # The path of the images to process
+    # The path of the images to process. When --single is set, the path of the
+    # single image to process.
     input_path: str = field(alias="-i")
 
     # The path to save output to
