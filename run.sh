@@ -4,7 +4,7 @@ function download_image() {
     echo "Image not found... Going to download it now, this may take a second!"
     image_archive="save_tree_save_world_hwr.docker"
     wget -q --show-progress -O "$image_archive" http://dl.pim16aap2.nl/s/SKmdkX4t7bi3G9Z/download/save_tree_save_world_hwr.docker
-    test $(stat --printf="%s" save_tree_save_world_hwr.docker) -gt 1000000 || { echo "Failed to download file! Please get it manually here: "; echo "https://drive.google.com/file/d/1ckqogv-WzmlrzskR_wF4V4e5vtIH5Oh2/view?usp=sharing"; echo "And then import it this way 'docker load < $image_archive'"; exit 1; }
+    test $(wc -c "$image_archive" | awk '{print $1}') -gt 1000000 || { echo "Failed to download file! Please get it manually here: "; echo "https://drive.google.com/file/d/1ckqogv-WzmlrzskR_wF4V4e5vtIH5Oh2/view?usp=sharing"; echo "And then import it this way 'docker load < $image_archive'"; exit 1; }
     echo "The image has been downloaded! Going to import it now..."
     docker load < "$image_archive"
     rm "$image_archive"
