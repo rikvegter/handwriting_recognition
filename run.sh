@@ -10,7 +10,7 @@ docker container inspect save_tree_save_world_hwr > /dev/null 2>&1 && { echo "Yo
 test -d results || { mkdir results || exit 3; }
 
 # Run the pipeline.
-docker run --name save_tree_save_world_hwr -v "$(pwd)/results/":/output -v "$1":/input save_tree_save_world_hwr
+docker run --user $(id -u):$(id -g) --name save_tree_save_world_hwr -v "$(pwd)/results/":/output -v "$1":/input save_tree_save_world_hwr
 
 # Clean up the docker container.
 docker rm save_tree_save_world_hwr
