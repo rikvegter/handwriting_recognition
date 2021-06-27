@@ -23,7 +23,7 @@ class LineSegmenter:
     """Implementation of "Handwritten Text Line Segmentation by Shredding Text
     into its Lines" by Anguelos Nicolaou and Basilis Gatos (2009; doi:10/b5wsx6)
     """
-    def __init__(self, general_options: GeneralOptions,
+    def __init__(self, general_options: GeneralOptions, input_path: str,
                  segment_options: LineSegmentationOptions) -> None:
         """Initialize the line shredder
 
@@ -46,8 +46,7 @@ class LineSegmenter:
         # Open the image, convert it to a numpy array and make sure it is binary
         # Also check if the baseline is rotated, and if so, rotate it back
         self.info.print("Straightening baseline...")
-        self.image: np.ndarray = self.__prepare_image(
-            general_options.input_path)
+        self.image: np.ndarray = self.__prepare_image(input_path)
 
         # 2.1 Preprocessing
 
