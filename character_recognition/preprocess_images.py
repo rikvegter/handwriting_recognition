@@ -186,7 +186,7 @@ def preprocess_files(data_dir: str, output_height: int, output_width: int, extra
         for file in files:
             fullname: str = os.path.join(path, file)
             image: Image.Image = Image.open(fullname)
-            preprocessed_image_arr: np.ndarray = preprocess_image(image, output_height, output_width, extra_padding)
+            preprocessed_image_arr: np.ndarray = preprocess_image(image, False, output_height, output_width, extra_padding)
             preprocessed_image: Image.Image = Image.fromarray(preprocessed_image_arr, mode="L")
             preprocessed_image.save(fullname)
 
