@@ -9,7 +9,6 @@ WORKDIR /hwr
 # Install required packages
 RUN \
  echo "***** Installing basic dependencies *****" && \
- chmod -R 777 /hwr/style/scripts/classifier/ && \
  apt-get update && \
  apt-get install -y \
      libssl-dev openssl python3 python3-pip python3-distutils python3-setuptools && \
@@ -24,5 +23,5 @@ RUN \
         /var/tmp/* \
         $HOME/.cache
 
-CMD python3 /hwr/main.py -i "/input" -o "/output/results" && python3 /hwr/style/scripts/classify_style.py "/input/" "/hwr/style/scripts/classifier/" "/output/results/"
+CMD python3 /hwr/main.py -i "/input" -o "/output/results" && python3 /hwr/style/scripts/classify_style.py "/input/" "/hwr/style/classifier/" "/output/results/"
 

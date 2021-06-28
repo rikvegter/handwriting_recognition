@@ -1,6 +1,7 @@
 import argparse
 import os
-from train_classifier import check_dir, normalize_fraglets
+import tqdm
+from train_classifier import CodebookStyleClassifier, check_dir, normalize_fraglets
 from preprocess_images import get_preprocessed_images_dataset, make_dir
 from extract_fraglets import get_fraglet_dataset
 import joblib
