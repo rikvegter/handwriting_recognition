@@ -69,11 +69,8 @@ def run_for_file(args, file_name: str, word_classifier: WordClassifier, ngp: NGr
     else:
         print(transcribed_output)
 
-    # Classify style
-    # TODO
-
-    if general_options.stop_after == 4:
-        print("Stopping after style classification",)
+    if general_options.stop_after == 3:
+        print("Stopping after character recognition!",)
         exit()
 
 
