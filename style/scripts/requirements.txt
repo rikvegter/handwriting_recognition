@@ -1,0 +1,13 @@
+numpy
+scipy
+matplotlib
+scikit-image
+xarray
+xarray-dataclasses
+scikit-learn==0.24.2
+umap-learn==0.5.1
+tqdm
+netCDF4
+joblib
+numba
+pynndescent
