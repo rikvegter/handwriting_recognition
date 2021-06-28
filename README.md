@@ -15,7 +15,7 @@ git clone https://github.com/rikvegter/handwriting_recognition.git
 
 Running the tool using [Docker](https://www.docker.com/) ensures it will work as
 intended. Before trying this, make sure Docker is
-[installed](https://www.docker.com/get-started) and and running.
+[installed](https://www.docker.com/get-started) and running.
 
 You can run the tool using the following command:
 
@@ -41,15 +41,15 @@ python3 -m pip install -r requirements.txt
 If you want to run locally, you need to provide some command line arguments:
 
 ```bash
-python3 main.py 
+python3 main.py
     [-h]                            # Show help for CLI arguments
     -i str                          # Directory containing files to process. If --single is set, the path to the file.
     [-o str]                        # Output directory
     [--stop_after {1,2,3,4,5}]      # Stop after a given step
     [-d]                            # Save intermediate images to a debug folder in the output directory
     [-s]                            # Process only a single image
-    [--classifier str]              # The directory containing the trained character recognition model 
-    [--ngram_file str]              # The file containing the .xlsx file with n-gram information 
+    [--classifier str]              # The directory containing the trained character recognition model
+    [--ngram_file str]              # The file containing the .xlsx file with n-gram information
 ```
 
 Options within square brackets are optional.
