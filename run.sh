@@ -19,8 +19,10 @@ docker container inspect save_tree_save_world_hwr > /dev/null 2>&1 && { echo "Yo
 # Download the image if the user does not have it yet.
 docker images | grep save_tree_save_world_hwr || download_image
 
+absolute_path=$(readlink -f "$1")
+
 # Run the pipeline.
-docker run --user $(id -u):$(id -g) --name save_tree_save_world_hwr -v "$(pwd)":/output -v "$1":/input save_tree_save_world_hwr
+docker run --user $(id -u):$(id -g) --name save_tree_save_world_hwr -v "$(pwd)":/output -v "$absolute_path":/input save_tree_save_world_hwr
 
 # Clean up the docker container.
 docker rm save_tree_save_world_hwr
