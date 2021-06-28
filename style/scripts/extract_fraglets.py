@@ -483,7 +483,7 @@ class hinge_interpolator(object):
         """
         tau = self.tau[idx]
         return self.angle(tau, delta_tau)
-def augment_contour(contour, elastic_displacement = 40., elastic_distance = 40., grid_delta = 25., rot_sigma = 10, shear_sigma = 0.1):
+def augment_contour(contour, elastic_displacement = 15., elastic_distance = 25., grid_delta = 25., rot_sigma = 20, shear_sigma = 0.15):
     """ Augment the contour by a random affine transformation followed by an elastic morph
     
     Elastic morph is performed by computing a displacement field consisting of spatially correlated 

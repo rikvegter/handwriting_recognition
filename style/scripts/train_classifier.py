@@ -14,6 +14,7 @@ import joblib
 from sklearn import preprocessing, cluster, feature_selection
 import codecs
 import pickle
+from scipy.stats import hmean
 
 def check_dir(string):
     """ Check if path exists
@@ -168,11 +169,14 @@ class CodebookStyleClassifier:
             # Normalize codebook PDF
             frag_dict['codebook_density'] /= np.sum(frag_dict['codebook_density'])
         return output
-    def classify_fragment(self, query_dict, drop_self = True):
+    def classify_fragment(self, query_dict, drop_self = True, use_means = False):
         """ Style classification using a dict as returned by get_fragment_density 
         
         """
-        fragment_density = self.fragment_density
+        if use_means:
+            fragment_density = self.style_density
+        else:
+            fragment_density = self.fragment_density
         # Drop this id, if evaluating perfomance on the same dataset
         if drop_self:
             fragment_density = {k: v for k, v in fragment_density.items() if k != query_dict['img_id']}
@@ -186,12 +190,21 @@ class CodebookStyleClassifier:
             distances.append((chisq, frag_dict['style'], img_id))
         ordering = np.argsort([dist for dist, _, _ in distances])
         distances = [distances[i] for i in ordering]
-        print("Classifying {}, styles of top 3 most similar fragments: {}, {}, {}".format(
-            query_dict['img_id'],
-            distances[0][1], 
-            distances[1][1],
-            distances[2][1], 
-        ))
+        if not use_means:
+            print("Classifying {}, top 3 most similar fragments: {}, {}, {} ({}, {}, {})".format(
+                query_dict['img_id'],
+                distances[0][1], 
+                distances[1][1],
+                distances[2][1], 
+                distances[0][2], 
+                distances[1][2],
+                distances[2][2], 
+            ))
+#         else:
+#             print("Classifying {}, nearest style: {}".format(
+#                 query_dict['img_id'],
+#                 distances[0][1]
+#             ))
         return distances
     def __init__(self, codebook_dataset, fragment_dataset, args):
         self.args = args
@@ -213,7 +226,8 @@ class CodebookStyleClassifier:
             n_components=args.embedding_components,
             n_neighbors=args.embedding_neighbours,
             metric=args.embedding_metric,
-            verbose=True
+            verbose=True,
+            init='random'
         )
         train_features = np.stack([codebook_dataset['contour_norm'].values], axis = 2).reshape(-1,200)
         # Embed the codebook datastet
@@ -232,14 +246,35 @@ class CodebookStyleClassifier:
         self.num_codebook_vectors = args.codebook_vectors
         self.fragment_density = self.get_fragment_density(fragment_dataset, fit_feature_selection=True)
         
+        # Set style harmonic means
+        self.style_density = dict()
+        for style in ['Herodian', 'Hasmonean', 'Archaic']:
+            style_densities = {k : v for k, v in self.fragment_density.items() if v['style'] == style}
+            harmonic_mean_density = hmean(
+                    [v['codebook_density'] for k,v in style_densities.items()],
+                    axis = 0
+                )
+            harmonic_mean_density  /= np.sum(harmonic_mean_density)
+            self.style_density['style'] = {
+                'style' : style,
+                'img_id' : style + '_harmonic_mean',
+                'codebook_density' : harmonic_mean_density
+            }
         print('Evaluating training performance...')
-        for img_id, frag_dict in tqdm.tqdm(self.fragment_density.items()):
-            r = self.classify_fragment(frag_dict)
-#         self.fragment_embedding = self.codebook_umap.transform(fragment_dataset)
-        
-#         print("Quantizing fragment fraglets...")
-#         self.fragment_encoding = codebook_kmeans.fit_predict(self.fragment_embedding)
-        
+        total = 0
+        correct = 0
+        correct_mean = 0
+        for img_id, frag_dict in self.fragment_density.items():
+            result = self.classify_fragment(frag_dict)
+            if result[0][1] == frag_dict['style']:
+                correct += 1
+            total += 1
+            
+            result_mean = self.classify_fragment(frag_dict, use_means=True)
+            if result_mean[0][1] == frag_dict['style']:
+                correct_mean += 1
+        print("Nearest neighbour training performance: {} out of {}".format(correct, total))
+        #print("Style mean training performance: {} out of {}".format(correct_mean, total))
         
         
 if __name__ == '__main__':
@@ -251,8 +286,8 @@ if __name__ == '__main__':
     parser.add_argument('-a', '--min_area', type=float, default=400., help='Minimum fraglet area in pixel^2')
     parser.add_argument('-p', '--min_periphery_factor', type=float, default=5, help='Minimum fraglet factor periphery / sqrt(Area) (increase to filter out blob-like fragments)')
     parser.add_argument('-c', '--embedding_components', type=int, default=2, help='Number of dimensions for the UMAP embedding')
-    parser.add_argument('-n', '--embedding_neighbours', type=int, default=5, help='Number of neighbours for the UMAP embedding')
-    parser.add_argument('-m', '--embedding_metric', type=str, default='manhattan', help='Distance metric for the UMAP embedding')
+    parser.add_argument('-n', '--embedding_neighbours', type=int, default=10, help='Number of neighbours for the UMAP embedding')
+    parser.add_argument('-m', '--embedding_metric', type=str, default='euclidean', help='Distance metric for the UMAP embedding')
     parser.add_argument('-k', '--kmeans_clusters', type=int, default=300, help='Number of kmeans clusters before codebook vector selection')
     parser.add_argument('-v', '--codebook_vectors', type=int, default=50, help='Number of codebook vectors after selection')
     args = parser.parse_args()
@@ -275,33 +310,3 @@ if __name__ == '__main__':
     classifier_path = os.path.join(args.classifier_dir, 'classifier.joblib')
     joblib.dump(classifier, classifier_path)
     
-    #clf = joblib.load(classifier_path) 
-#     # Create codebook
-#     regressor = umap.UMAP()
-#     codebook_data = codebook_fraglets['contour_norm'].values.reshape(-1,200)
-#     fragment_fraglets = fragment_fraglets['contour_norm'].values.reshape(-1,200)
-    
-#     codebook_style = codebook_fraglets['style'].values.astype('str')
-#     # https://umap-learn.readthedocs.io/en/latest/supervised.html?highlight=classification#using-labels-to-separate-classes-supervised-umap
-    
-#     label_encoder = LabelEncoder()
-#     style_encoder = LabelEncoder()
-#     style_encoder.fit(codebook_style)
-#     label = codebook_fraglets['style'].astype('str').str.cat(codebook_fraglets['allograph'].astype('str')).values
-
-#     target = label_encoder.fit_transform(label)
-#     codebook_embedding = regressor.fit_transform(codebook_data, y=target)
-    
-#     fig, ax = plt.subplots(1, figsize=(14, 10))
-#     plt.scatter(*codebook_embedding.T, s=0.1, c=style_encoder.transform(codebook_style), cmap='Spectral', alpha=1.0)
-#     plt.setp(ax, xticks=[], yticks=[])
-#     plt.title('Supervised UMAP embbedding');
-#     plt.show()
-    
-#     fragments_embedding = regressor.transform(fragment_fraglets)
-#     fig, ax = plt.subplots(1, figsize=(14, 10))
-#     plt.scatter(*codebook_embedding.T, s=0.1, c=style_encoder.transform(codebook_style), alpha=1.0)
-#     plt.scatter(*fragments_embedding.T, s=0.1, c='b', alpha=1.0)
-#     plt.setp(ax, xticks=[], yticks=[])
-#     plt.title('Supervised UMAP embbedding (codebook and fragments)');
-#     plt.show()

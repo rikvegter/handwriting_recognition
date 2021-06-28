@@ -44,3 +44,7 @@ e.g.:
 ```bash
 python3 classify_style.py /patyh
 ```
+
+Calculating the UMAP embedding of the fraglets may take a while (as the )
+
+The classifier is a pickled sklearn/umap model and is likely not portable between library versions. In case version errors arise, the classifier can be re-trained on the extracted 

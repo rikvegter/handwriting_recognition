@@ -25,19 +25,19 @@ if __name__ == '__main__':
     preprocessing_args.image_dir = args.image_dir
     preprocessing_args.style = False
     preprocessing_args.labeled = False
-    preprocessing_args.pattern = "*.jpg"
+    preprocessing_args.pattern = "*.*"
     preprocessing_args.name = "style_classification"
     
     image_data = get_preprocessed_images_dataset(preprocessing_args)
     fraglet_extraction_args = classifier.fraglet_extraction_args
-    fraglet_extraction_args.augment_times = 0
+    fraglet_extraction_args.augment_times = 3
     classification_fraglet_data = get_fraglet_dataset(image_data, fraglet_extraction_args)
     dataset_path = os.path.join(args.classifier_dir, 'fraglets.nc')
     
-    print('Writing output to {}'.format(dataset_path))
-    classification_fraglet_data.to_netcdf(dataset_path, encoding = {
-        "contour": {"zlib" : True},
-    })
+#     print('Writing output to {}'.format(dataset_path))
+#     classification_fraglet_data.to_netcdf(dataset_path, encoding = {
+#         "contour": {"zlib" : True},
+#     })
     
     normalize_fraglets(classification_fraglet_data)
     fragment_density = classifier.get_fragment_density(classification_fraglet_data)
@@ -47,7 +47,6 @@ if __name__ == '__main__':
         path = image_data.where(image_data.img_id == img_id, drop=True).img_path.item()
         basename = os.path.splitext(os.path.basename(path))[0]
         style_path = os.path.join('./results', basename + "_style.txt")
-        #style_path = ".".join(path.split('.')[:-1]) + "_style.txt"
         print(style_path)
         with open(style_path, 'w') as style_out_file:
             style_out_file.write(r[0][1])

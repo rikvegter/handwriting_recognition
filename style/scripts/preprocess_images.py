@@ -113,7 +113,12 @@ def load_image_dataset(path, dataset_name, index_styles, index_allographs, img_p
             image_datasets.append(
                 load_img(file, idx, **index_dict)
             )
-    dataset = xr.concat(image_datasets, dim='img_id', fill_value = {'img_grayscale' : 255})
+    try:
+        dataset = xr.concat(image_datasets, dim='img_id', fill_value = {'img_grayscale' : 255})
+    except ValueError:
+        if(len(image_datasets) == 0):
+            print("No images found with specified error. ")
+            exit()
     return dataset
 
 def preprocess_img(img,  gaussian_radius, opening_disk, closing_disk):
@@ -169,8 +174,8 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--labeled',  action='store_true', help='Traverse allograph subdirectories and label image data with allograph')
     parser.add_argument('-p', '--pattern', type=str, default="*.*", help='Image filename pattern (default *.*)')
     parser.add_argument('-n', '--name', type=str, default='', help="Dataset name (default is the last directory of image_dir)")
-    parser.add_argument('-g', '--gaussian_radius', type=float, default=0.5, help="Radius of gaussian blur")
-    parser.add_argument('-o', '--opening_disk', type=int, default=0, help="Size of opening disk")
+    parser.add_argument('-g', '--gaussian_radius', type=float, default=3, help="Radius of gaussian blur")
+    parser.add_argument('-o', '--opening_disk', type=int, default=3, help="Size of opening disk")
     parser.add_argument('-c', '--closing_disk', type=int, default=0, help="Size of closing disk")
 
     
