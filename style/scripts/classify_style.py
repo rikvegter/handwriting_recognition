@@ -34,11 +34,7 @@ if __name__ == '__main__':
     classification_fraglet_data = get_fraglet_dataset(image_data, fraglet_extraction_args)
     dataset_path = os.path.join(args.classifier_dir, 'fraglets.nc')
     
-#     print('Writing output to {}'.format(dataset_path))
-#     classification_fraglet_data.to_netcdf(dataset_path, encoding = {
-#         "contour": {"zlib" : True},
-#     })
-    
+
     normalize_fraglets(classification_fraglet_data)
     fragment_density = classifier.get_fragment_density(classification_fraglet_data)
     result_path = make_dir("./results")
@@ -50,12 +46,3 @@ if __name__ == '__main__':
         print(style_path)
         with open(style_path, 'w') as style_out_file:
             style_out_file.write(r[0][1])
-
-#     # Load fragments
-#     fragment_fraglets = read_fraglets(args.fragment_dir, classifier.args)
-#     normalize_fraglets(fragment_fraglets)
-                        
-#     fragment_density = classifier.get_fragment_density(fragment_fraglets)
-                        
-#     for img_id, frag_dict in fragment_density.items():
-#         r = classifier.classify_fragment(frag_dict)

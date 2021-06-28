@@ -56,7 +56,6 @@ def normalize_fraglets(fraglet_ds):
       - Setting standard deviation to one
     """
     normlized_contours = xr.zeros_like(fraglet_ds.contour)
-#     sqare_root_velocity = xr.zeros_like(fraglet_ds.contour)
     normlized_contours.values[:,:,0] = preprocessing.scale(
         fraglet_ds.contour.values[:,:,0],
         axis=1
@@ -65,11 +64,8 @@ def normalize_fraglets(fraglet_ds):
         fraglet_ds.contour.values[:,:,1],
         axis=1
     )
-#     sqare_root_velocity.values[:] = np.gradient(normlized_contours.values, axis = 1)
-#     sqare_root_velocity.values[:] /= np.sqrt(np.linalg.norm(sqare_root_velocity.values, axis = 2))[:,:,np.newaxis]
-    
     fraglet_ds['contour_norm'] = normlized_contours
-#     fraglet_ds['square_root_velocity'] = sqare_root_velocity
+
     
 def equalize_fraglet_numbers(dataset):
     """ Equalize number of fraglets per style by selecting a random subset for over-represented styles
@@ -200,11 +196,6 @@ class CodebookStyleClassifier:
                 distances[1][2],
                 distances[2][2], 
             ))
-#         else:
-#             print("Classifying {}, nearest style: {}".format(
-#                 query_dict['img_id'],
-#                 distances[0][1]
-#             ))
         return distances
     def __init__(self, codebook_dataset, fragment_dataset, args):
         self.args = args

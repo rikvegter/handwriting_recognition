@@ -246,18 +246,8 @@ def find_midline(contour, vertical = False, plot = False):
     midline_contours = find_contours(dist_difference, 0)
 
     # There may be multiple contours in some cases, select the longest one
-#     try:
     longest_contour_idx = np.argmax([c.shape[0] for c in midline_contours])
-#     except ValueError:
-#         print("No midline found.")
-#         plt.plot(*np.flipud(contour.T))
-#         plt.show()
-#         plt.figure()
-#         im = (dist_difference >= 0.0) * 0.5
-#         im += top_mask.astype('int') - 3 * bot_mask
-#         #im[midline_ii[:,0], midline_ii[:,1]] = -1
-#         plt.imshow(im)
-#         plt.show()
+
     midline_contour = midline_contours[longest_contour_idx]
     midline_ii = np.rint(midline_contour).astype('int')
     
@@ -404,24 +394,21 @@ def split_contour_vertical(cc, line_gaps, min_curve_length = 150, show_vertical 
     for gap_start, gap_end in line_gaps:
         midline = find_midline(cc.contour, vertical=True)
         # Select the part of the midline corresponding to the gap
-        #print(gap_start, gap_end, midline.midline[:,0])
         midline_start_idx = np.argwhere(midline.midline[:,0] >= gap_end)[-1][0] + 1
         midline_end_idx = np.argwhere(midline.midline[:,0] > gap_start)[-1][0]
         gap_slice = slice(midline_start_idx, midline_end_idx)
-        #plt.plot(*np.flipud(midline.midline[gap_slice].T), c='k', ls=':', lw=5)
         
         # Find the part above the top
         below = midline_substr(midline, 0, midline_start_idx)
         above = midline_substr(midline, midline_end_idx, len(midline.midline))
         
-        #print(curve_length(below), curve_length(above))
+
         if curve_length(above) >= min_curve_length and curve_length(below) >= min_curve_length:
             # Split the contour
             split_contours.append(above)
             contour = midline_substr(midline, 0, midline_end_idx)
     split_contours.append(contour)
     # Plot the resulting contours
-    #plt.fill(*np.flipud(cc.contour.T), c='grey')
     if show_vertical:
         plt.plot(*np.flipud(midline.midline.T), c='k', ls=':')
         # Alternating hatch pattern
@@ -587,17 +574,7 @@ def split_contour_horizontal(contour, smooth = 2):
     top_hinge = hinge_interpolator(
         np.r_[midline.top, midline.bot]
     )
-#     bot_hinge = hinge_interpolator(
-#         np.r_[midline.bot, midline.top]
-#     )
-#     mid_hinge = hinge_interpolator(
-#         midline.midline,
-#         wrap = False
-#     )
-#     
-#     mid_right = mid_hinge.angle_idx(
-#         idx, 20
-#     )
+
     top_left = reverse_angle(top_hinge.angle_idx(
         midline.mid_top_idx[idx], -30
     ))
@@ -605,16 +582,6 @@ def split_contour_horizontal(contour, smooth = 2):
         midline.mid_top_idx[idx], 20
     )
     
-#     bot_left = reverse_angle(top_hinge.angle_idx(
-#         midline.mid_top_idx[idx], -30
-#     ))
-    
-#     bot_right = bot_hinge.angle_idx(
-#         midline.mid_bot_idx[idx], 20
-#     )
-    
-#     mid_to_top = -reduce_angle(mid_right - top_left)
-#     bot_hinge = -reduce_angle(bot_right - bot_left)
     top_hinge = -reduce_angle(top_right - top_left)
     
     
@@ -627,20 +594,6 @@ def split_contour_horizontal(contour, smooth = 2):
     split_criterium += bot_contour_loop
     peaks, props = find_peaks(split_criterium, height = np.pi / 3)
     
-#     if len(contour) > 300:
-#         fig, ax = plt.subplots(3, 1)
-#         ax[0].plot(mid_to_top, label = 'mid_to_top')
-#         #ax[0].plot(mid_to_top_max, label = 'mid_to_top_max')
-#         ax[0].plot(top_hinge, label = 'top_hinge')
-#         ax[0].plot(bot_hinge, label = 'bot_hinge')
-#         ax[0].axhline(np.pi / 3)
-#         for peak in peaks:
-#             ax[0].axvline(peak)
-#         ax[0].legend()
-#         ax[1].fill(*np.flipud(contour.T), c='lightgray', edgecolor='k', lw=1)
-#         ax[1].set_ylim(np.max(contour[:,0]), np.min(contour[:,0]))
-#         ax[2].plot(np.diff(midline.mid_bot_idx))
-#         plt.show()
     fraglets = []
     for start, end in zip(np.r_[0, peaks], np.r_[peaks, mid_size]):
         fraglets.append(midline_substr(midline, start, end))
