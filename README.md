@@ -27,6 +27,8 @@ When the script is run for the first time, it will download a complete Docker
 image (~2GB), this might take some time. When the image is downloaded, it will
 be executed on the images in the folder. The output will be saved to `./results`.
 
+Note that it may take a while for the pipeline to complete and even appear to get stuck at times. This is also true when running it locally.
+
 ### Running locally
 
 You can also run the python code directly. The code has been tested with Python
