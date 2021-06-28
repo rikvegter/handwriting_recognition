@@ -10,4 +10,3 @@ tqdm
 netCDF4
 joblib
 numba
-pynndescent

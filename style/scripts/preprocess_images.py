@@ -113,7 +113,12 @@ def load_image_dataset(path, dataset_name, index_styles, index_allographs, img_p
             image_datasets.append(
                 load_img(file, idx, **index_dict)
             )
-    dataset = xr.concat(image_datasets, dim='img_id', fill_value = {'img_grayscale' : 255})
+    try:
+        dataset = xr.concat(image_datasets, dim='img_id', fill_value = {'img_grayscale' : 255})
+    except ValueError:
+        if(len(image_datasets) == 0):
+            print("No images found with specified error. ")
+            exit()
     return dataset
 
 def preprocess_img(img,  gaussian_radius, opening_disk, closing_disk):
