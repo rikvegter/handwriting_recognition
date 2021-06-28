@@ -330,8 +330,8 @@ class CharacterSegmenter:
         max_height: int = 0
         max_height_k: float = 0
 
-        # try 40 angles between (roughly) -45 and +45 degrees
-        for k in np.arange(-1, 1, 0.05):
+        # try 10 angles between (roughly) -45 and +45 degrees
+        for k in np.arange(-1, 1, 0.2):
             # shearing array as affine transformation
             # (https://en.wikipedia.org/wiki/Transformation_matrix#Shearing)
             # (https://en.wikipedia.org/wiki/Transformation_matrix#Affine_transformations)
