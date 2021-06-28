@@ -14,3 +14,5 @@ umap-learn
 tqdm
 netCDF4
 joblib
+setuptools
+numba
