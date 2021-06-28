@@ -174,8 +174,8 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--labeled',  action='store_true', help='Traverse allograph subdirectories and label image data with allograph')
     parser.add_argument('-p', '--pattern', type=str, default="*.*", help='Image filename pattern (default *.*)')
     parser.add_argument('-n', '--name', type=str, default='', help="Dataset name (default is the last directory of image_dir)")
-    parser.add_argument('-g', '--gaussian_radius', type=float, default=3, help="Radius of gaussian blur")
-    parser.add_argument('-o', '--opening_disk', type=int, default=3, help="Size of opening disk")
+    parser.add_argument('-g', '--gaussian_radius', type=float, default=0.5, help="Radius of gaussian blur")
+    parser.add_argument('-o', '--opening_disk', type=int, default=0, help="Size of opening disk")
     parser.add_argument('-c', '--closing_disk', type=int, default=0, help="Size of closing disk")
 
     
